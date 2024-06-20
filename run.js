@@ -70,7 +70,7 @@ async function runProjector() {
     "src/projector/index.html",
     "src/projector/app.css",
     "src/projector/app.js",
-    "src/projector/static/*"
+    "src/projector/voropp-module.wasm"
   ];
   const plugins = [
     glsl(),
