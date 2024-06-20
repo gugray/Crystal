@@ -1,0 +1,23 @@
+{
+  "name": "crystal",
+  "type": "module",
+  "version": "0.0.1",
+  "description": "Shader live coding environment. Works with meshes.",
+  "license": "MIT",
+  "author": {
+    "name": "Gábor L Ugray",
+    "email": "gabor.reads.this@gmail.com"
+  },
+  "dependencies": {
+    "codemirror": "^5.65.16",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "meyda": "^5.6.3",
+    "three": "^0.165.0",
+    "ws": "^8.17.1"
+  },
+  "devDependencies": {
+    "@jgoz/esbuild-plugin-livereload": "^2.1.0",
+    "esbuild": "^0.21.5"
+  }
+}

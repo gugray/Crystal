@@ -1,0 +1,8 @@
+data
+data.lnk
+public
+.DS_Store
+node_modules
+.idea
+yarn-error.log
+data/clip*
