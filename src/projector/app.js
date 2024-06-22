@@ -6,8 +6,10 @@ import * as Sharder from "./sharder.js";
 
 const animating = true;
 const useShadow = true;
-const rotSpeed = 0.0001;
-const heaveSpeed = 0.0006;
+const rotSpeed = 0.0003;
+const heaveSpeed = 0.0009;
+const insetBy = 0.0005;
+const displaceBy = 2;
 const renderParticles = false;
 
 let seed = Math.round(Math.random() * 65535);
@@ -19,6 +21,10 @@ let seed = Math.round(Math.random() * 65535);
 let G;
 let voroMod;
 let elmCanvas, w, h;
+
+let volume = [-1, 1, -1, 1, -1, 1];
+let walls;
+let volumeTester;
 
 setTimeout(init, 50);
 
@@ -39,6 +45,8 @@ async function init() {
   console.log(`Seed: ${seed}`);
   setRandomGenerator(mulberry32(seed));
   voroMod = await createVoroPP();
+  walls = Sharder.genTetraWalls();
+  volumeTester = new Sharder.VolumeTester(voroMod, volume, walls);
 
   elmCanvas = document.getElementById("webgl-canvas");
   resizeCanvas();
@@ -65,15 +73,14 @@ function buildWorld() {
   const rg = threeCache.rg;
   rg.rotation.set(0, model.yRot, 0);
 
-  const walls = Sharder.genTetraWalls();
   const points = [];
   model.particles.forEach(p => points.push(p.pos));
-  const voro = Sharder.genVoro(voroMod, [-1, 1, -1, 1, -1, 1], walls, points);
+  const voro = Sharder.genVoro(voroMod, volume, walls, points, insetBy);
 
   const shards = [];
   for (const cellData of voro) {
     if (cellData.volume < 5e-6) continue;
-    const shard = new Sharder.Shard(cellData, model.heave);
+    const shard = new Sharder.Shard(cellData, displaceBy);
     shards.push(shard);
     shard.triVerts = [];
     shard.appendTriangles(shard.triVerts)
@@ -197,8 +204,8 @@ function setParticleColors() {
 
 function updateModel(time) {
   model.yRot = time * rotSpeed;
-  model.heave = 0.1 + 0.8 * (Math.sin(time * heaveSpeed) + 1);
-  for (const p of model.particles) p.update(time);
+  model.heave = 0.1 + 0.45 * (Math.sin(time * heaveSpeed) + 1);
+  for (const p of model.particles) p.update(time, volumeTester);
 }
 
 function resizeCanvas() {

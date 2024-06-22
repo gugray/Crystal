@@ -5,7 +5,6 @@ const wallA = 1;
 const wallB = 0.4;
 const wallD = 0.4;
 
-
 export class Particle {
 
   constructor(pos) {
@@ -14,11 +13,15 @@ export class Particle {
     this.velo = new Vector3();
   }
 
-  update(time) {
+  update(time, volumeTester) {
 
     const particleRandomGain = 0.0001;
 
     this.pos.add(this.velo);
+    if (volumeTester && !volumeTester.isPointInside(this.pos.x, this.pos.y, this.pos.z)) {
+      this.pos.sub(this.velo);
+      this.velo.set(0, 0, 0);
+    }
 
     this.velo.x += particleRandomGain * (rand() - 0.5);
     this.velo.y += particleRandomGain * (rand() - 0.5);
@@ -93,22 +96,24 @@ export function genRegularParticles(gap) {
 
 export class Shard {
 
-  constructor(data, heave) {
+  constructor(data, displacement) {
 
     this.id = data.id;
     this.particle = data.particle;
-    this.vertsRel = data.vertices;
+    this.vertsRel = data.insetVertices;
     this.vertsAbs = [];
-    this.faceVerts = data.faceVertIxs;
+    this.faceVerts = data.insetFaceVertIxs;
 
     // Offset shards ("heave")
-    const pnorm = this.particle.clone();
-    pnorm.y = 0;
-    pnorm.normalize();
-    pnorm.multiplyScalar(0.05 * heave);
-    this.particle.add(pnorm);
-    this.particle.y *= (1 + 0.2 * heave);
-    // this.particle.multiplyScalar(1.3);
+    if (displacement != 0) {
+      const pnorm = this.particle.clone();
+      pnorm.y = 0;
+      pnorm.normalize();
+      pnorm.multiplyScalar(0.05 * displacement);
+      this.particle.add(pnorm);
+      this.particle.y *= (1 + 0.2 * displacement);
+      // this.particle.multiplyScalar(1.3);
+    }
 
     // Calculate absolute vertex positiions
     this.vertsRel.forEach(v => this.vertsAbs.push(v.clone().add(this.particle)));
@@ -154,12 +159,14 @@ export class WallPlane {
 }
 
 export class CellData {
-  constructor(id, particle, volume, vertices, faceVertIxs) {
+  constructor(id, particle, volume, vertices, faceVertIxs, insetVertices, insetFaceVertIxs) {
     this.id = id;
     this.particle = particle;
     this.volume = volume;
     this.vertices = vertices;
     this.faceVertIxs = faceVertIxs;
+    this.insetVertices = insetVertices;
+    this.insetFaceVertIxs = insetFaceVertIxs;
   }
 }
 
@@ -176,8 +183,7 @@ export function genTetraWalls() {
   ];
 }
 
-
-export function genVoro(mod, volume, wallPlanes, particles) {
+export function genVoro(mod, volume, wallPlanes, particles, insetBy) {
 
   const cellDataArr = [];
 
@@ -208,7 +214,7 @@ export function genVoro(mod, volume, wallPlanes, particles) {
     input[ip++] = particles[i].z;
   }
 
-  const pRes = mod._calculate_voronoi(pInput);
+  const pRes = mod._calculate_voronoi(pInput, insetBy);
   const dummyArr = new Float64Array(mod.HEAPU8.buffer, pRes, 1);
   const resSize = dummyArr[0];
   const resArr = new Float64Array(mod.HEAPU8.buffer, pRes, resSize);
@@ -222,12 +228,13 @@ export function genVoro(mod, volume, wallPlanes, particles) {
     const volume = resArr[pos++];
 
     const vertices = [];
+    const faceVertIxs = [];
+
     const nVerts = resArr[pos++];
     for (let i = 0; i < nVerts; ++i) {
       vertices.push(new Vector3(resArr[pos++], resArr[pos++], resArr[pos++]));
     }
 
-    const faceVertIxs = [];
     let nFaces = resArr[pos++];
     while (nFaces > 0) {
       --nFaces;
@@ -240,11 +247,68 @@ export function genVoro(mod, volume, wallPlanes, particles) {
       faceVertIxs.push(vertIxs);
     }
 
-    cellDataArr.push(new CellData(id, particle, volume, vertices, faceVertIxs));
+    const insetVertices = [];
+    const insetFaceVertIxs = [];
+    const nInsetVerts = resArr[pos++];
+    if (nInsetVerts == 0) {
+      insetVertices.push(...vertices);
+      insetFaceVertIxs.push(...faceVertIxs);
+    }
+    else {
+      for (let i = 0; i < nInsetVerts; ++i) {
+        insetVertices.push(new Vector3(resArr[pos++], resArr[pos++], resArr[pos++]));
+      }
+      let nFaces = resArr[pos++];
+      while (nFaces > 0) {
+        --nFaces;
+        let nVertsInFace = resArr[pos++];
+        const vertIxs = [];
+        while (nVertsInFace > 0) {
+          --nVertsInFace;
+          vertIxs.push(resArr[pos++]);
+        }
+        insetFaceVertIxs.push(vertIxs);
+      }
+    }
+
+    cellDataArr.push(new CellData(id, particle, volume, vertices, faceVertIxs, insetVertices, insetFaceVertIxs));
   }
 
   mod._free(pRes);
   mod._free(pInput);
 
   return cellDataArr;
+}
+
+export class VolumeTester {
+
+  constructor(mod, volume, wallPlanes) {
+    this.mod = mod;
+
+    const szInput =
+      6 + // Space bounds
+      1 + wallPlanes.length * 4; // Wall planes
+    const pInput = mod._malloc(szInput * 8);
+    const input = new Float64Array(mod.HEAPU8.buffer, pInput, szInput);
+    let ip = 0;
+    for (let i = 0; i < 6; ++i)
+      input[ip++] = volume[i];
+    input[ip++] = wallPlanes.length;
+    for (let i = 0; i < wallPlanes.length; ++i) {
+      input[ip++] = wallPlanes[i].norm.x;
+      input[ip++] = wallPlanes[i].norm.y;
+      input[ip++] = wallPlanes[i].norm.z;
+      input[ip++] = wallPlanes[i].displacement;
+    }
+    this.pTester = this.mod._create_volume_tester(pInput)
+    this.mod._free(pInput);
+  }
+
+  dispose() {
+    this.mod._delete_volume_tester(this.pTester);
+  }
+
+  isPointInside(x, y, z) {
+    return this.mod._is_point_inside(this.pTester, x, y, z);
+  }
 }
