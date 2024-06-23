@@ -1,9 +1,11 @@
 import * as THREE from "three";
 import {mulberry32, rand, setRandomGenerator} from "./random.js";
 import createVoroPP from "./voropp-module.js";
+import Audio from "./audio.js";
 import {Graphics} from "./graphics.js";
 import * as Sharder from "./sharder.js";
 
+const showEqualizer = true;
 const animating = true;
 const useShadow = true;
 const rotSpeed = 0.0003;
@@ -11,6 +13,8 @@ const insetHeaveSpeed = 0.0009;
 const insetBy = 0.01;
 const displaceHeaveSpeed = 0.0007;
 const displaceBy = 3;
+const audioReactive = true;
+const audioDisplayFactor = 0.15;
 const particleGap = 0.1;
 const bgUrl = "static/berries-blur.jpg";
 const renderMode = "solids"; // particles, solids
@@ -34,7 +38,9 @@ let seed = Math.round(Math.random() * 65535);
  */
 let G;
 let voroMod;
+let audio;
 let elmCanvas, w, h;
+let elmEq;
 
 let volume = [-1, 1, -1, 1, -1, 1];
 let walls;
@@ -59,9 +65,20 @@ async function init() {
 
   console.log(`Seed: ${seed}`);
   setRandomGenerator(mulberry32(seed));
+
+  audio = new Audio({ scale: 0.5, volSamples: 3 });
+  audio.beat.threshold = 30;
+  setTimeout(() => {
+    elmEq.querySelector("#beat .lamp").classList.remove("on");
+  }, 1000);
+
+
   voroMod = await createVoroPP();
   walls = Sharder.genTetraWalls();
   volumeTester = new Sharder.VolumeTester(voroMod, volume, walls);
+
+  elmEq = document.getElementById("equalizer");
+  if (showEqualizer) elmEq.classList.add("visible");
 
   elmCanvas = document.getElementById("webgl-canvas");
   resizeCanvas();
@@ -74,7 +91,6 @@ async function init() {
     void document.documentElement.requestFullscreen();
   });
 
-  // model.particles.push(...Sharder.genRandomParticles(120));
   model.particles.push(...Sharder.genRegularParticles(particleGap));
   setParticleColors();
   console.log(`Particle count: ${model.particles.length}`);
@@ -94,7 +110,9 @@ function buildWorld() {
   const shards = [];
   for (const cellData of voro) {
     if (cellData.volume < 5e-6) continue;
-    const shard = new Sharder.Shard(cellData, model.displaceHeave * displaceBy);
+    let displaceVal = model.displaceHeave * displaceBy;
+    if (audioReactive) displaceVal += audioDisplayFactor * audio.volSmooth;
+    const shard = new Sharder.Shard(cellData, displaceVal);
     shards.push(shard);
     shard.triVerts = [];
     shard.appendTriangles(shard.triVerts)
@@ -249,7 +267,30 @@ function resizeCanvas() {
   if (G) G.updateSize();
 }
 
+function updateEqualizer() {
+  if (!showEqualizer) return;
+  elmEq.querySelector("#vol .val").style.height = `${audio.vol}%`;
+  elmEq.querySelector("#vol2 .val").style.height = `${audio.volSmooth}%`;
+  elmEq.querySelector("#f0 .val").style.height = `${audio.fft[0]}%`;
+  elmEq.querySelector("#f1 .val").style.height = `${audio.fft[1]}%`;
+  elmEq.querySelector("#f2 .val").style.height = `${audio.fft[2]}%`;
+  elmEq.querySelector("#f3 .val").style.height = `${audio.fft[3]}%`;
+  if (audio.isBeat) elmEq.querySelector("#beat .lamp").classList.add("on");
+  else elmEq.querySelector("#beat .lamp").classList.remove("on");
+}
+
 function frame(time) {
+
+  audio.tick();
+
+  if (audioReactive && audio.isBeat) {
+    model.particles.length = 0;
+    model.particles.push(...Sharder.genRegularParticles(particleGap));
+    setParticleColors();
+  }
+
+  updateEqualizer();
+
   if (!G) return;
   updateModel(time);
   threeCache.rg.rotation.set(0, model.yRot, 0);

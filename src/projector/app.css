@@ -61,3 +61,32 @@ body {
 #cmd-area:hover {
   & svg { visibility: visible; }
 }
+
+#equalizer {
+  position: fixed; right: 10px; bottom: 10px; border: 1px solid var(--clrControl);
+  padding: 3px; background-color: black;
+  display: none; flex-direction: column; gap: 3px;
+  &.visible { display: flex; }
+  & .top {
+    display: flex; gap: 3px;
+    height: 120px;
+  }
+  & .bottom { height: 10px; width: 100%; }
+  & .val { height: 10%; }
+}
+#equalizer>div>div { border: 1px solid var(--clrControl); }
+#equalizer>.top>div {
+  display: flex; flex-direction: column; justify-content: flex-end;
+  width: 16px;  background-color: black;
+}
+#equalizer>.top>div>.val { background-color: #6d949d;}
+#equalizer>.top>div.red>.val { background-color: #a14141;}
+#equalizer>.bottom>div { height: 100%; }
+#equalizer>.bottom>div>div {
+  height: 100%; width: 100%;
+  transition: background-color 0.3s ease-out;
+}
+#equalizer>.bottom>div>div.on {
+  transition: none;
+  background-color: #d08e4c;
+}
