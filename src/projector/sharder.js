@@ -15,7 +15,7 @@ export class Particle {
 
   update(time, volumeTester) {
 
-    const particleRandomGain = 0.0001;
+    const particleRandomGain = 0.0002;
 
     this.pos.add(this.velo);
     if (volumeTester && !volumeTester.isPointInside(this.pos.x, this.pos.y, this.pos.z)) {
@@ -62,7 +62,7 @@ export function genRandomParticles(count) {
 export function genRegularParticles(gap) {
 
   const res = []
-  for (let y = -1; y <= 1; y += gap) {
+  for (let y = -1.5 * gap; y <= 1.5 * gap; y += 1.5*gap) {
     const q = Math.abs(y);
     const xzGap = gap * Math.pow(2, q * 2);
     for (let x = 0; x <= 1; x += xzGap) {

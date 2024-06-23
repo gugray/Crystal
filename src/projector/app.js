@@ -7,10 +7,24 @@ import * as Sharder from "./sharder.js";
 const animating = true;
 const useShadow = true;
 const rotSpeed = 0.0003;
-const heaveSpeed = 0.0009;
-const insetBy = 0.0005;
-const displaceBy = 2;
-const renderParticles = false;
+const insetHeaveSpeed = 0.0009;
+const insetBy = 0.01;
+const displaceHeaveSpeed = 0.0007;
+const displaceBy = 3;
+const particleGap = 0.1;
+const bgUrl = "static/berries-blur.jpg";
+const renderMode = "solids"; // particles, solids
+
+const palette = [
+  "hsl(47, 95%, 16%)",
+  "hsl(360, 100%, 39%)",
+  "hsl(0, 100%, 50%)",
+  "hsl(67, 91%, 27%)",
+  "hsl(222, 87%, 74%)",
+  "hsl(236, 17%, 81%)",
+  "hsl(65, 96%, 19%)",
+  "hsl(34, 100%, 49%)",
+];
 
 let seed = Math.round(Math.random() * 65535);
 // seed = 48923;
@@ -31,7 +45,8 @@ setTimeout(init, 50);
 const model = {
   particles: [],
   yRot: 0,
-  heave: 1,
+  insetHeave: 1,
+  displaceHeave: 0,
 };
 
 const threeCache = {
@@ -60,7 +75,7 @@ async function init() {
   });
 
   // model.particles.push(...Sharder.genRandomParticles(120));
-  model.particles.push(...Sharder.genRegularParticles(0.2));
+  model.particles.push(...Sharder.genRegularParticles(particleGap));
   setParticleColors();
   console.log(`Particle count: ${model.particles.length}`);
   initWorld();
@@ -71,22 +86,21 @@ function buildWorld() {
 
   clearTemporaryObjects();
   const rg = threeCache.rg;
-  rg.rotation.set(0, model.yRot, 0);
 
   const points = [];
   model.particles.forEach(p => points.push(p.pos));
-  const voro = Sharder.genVoro(voroMod, volume, walls, points, insetBy);
+  const voro = Sharder.genVoro(voroMod, volume, walls, points, model.insetHeave * insetBy);
 
   const shards = [];
   for (const cellData of voro) {
     if (cellData.volume < 5e-6) continue;
-    const shard = new Sharder.Shard(cellData, displaceBy);
+    const shard = new Sharder.Shard(cellData, model.displaceHeave * displaceBy);
     shards.push(shard);
     shard.triVerts = [];
     shard.appendTriangles(shard.triVerts)
   }
 
-  if (renderParticles) {
+  if (renderMode == "particles") {
     // Diag: Add particles as tiny cubes
     for (let i = 0; i < model.particles.length; ++i) {
       const p = model.particles[i];
@@ -101,7 +115,7 @@ function buildWorld() {
       threeCache.geos.push(geo);
     }
   }
-  else {
+  else if (renderMode == "solids") {
     // Add shards
     for (const shard of shards) {
       const geo = new THREE.BufferGeometry();
@@ -132,18 +146,30 @@ function clearTemporaryObjects() {
 
 function initWorld() {
 
+  const loader = new THREE.TextureLoader();
+  loader.load(bgUrl, tx => {
+    G.scene.background = tx;
+    G.scene.backgroundIntensity = 0.04;
+  });
+
   threeCache.rg = new THREE.Group();
   G.scene.add(threeCache.rg);
 
   for (let i = 0; i < model.particles.length; ++i) {
-    const mat = new THREE.MeshPhysicalMaterial({
+    // const mat = new THREE.MeshPhysicalMaterial({
+    //   color: model.particles[i].color,
+    //   metalness: 0,
+    //   roughness: 0,
+    //   reflectivity: 0.5,
+    //   sheen: 0,
+    //   specularIntensity: 1,
+    //   // transmission: 0.9,
+    // });
+    const mat = new THREE.MeshLambertMaterial({
       color: model.particles[i].color,
-      metalness: 0,
-      roughness: 0,
-      reflectivity: 0.5,
-      sheen: 0,
-      specularIntensity: 1,
-      // transmission: 0.9,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
     });
     threeCache.materials.push(mat);
   }
@@ -168,7 +194,7 @@ function initWorld() {
     return light;
   }
 
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
   G.scene.add(ambientLight);
 
   const dirLight1 = makeDirLight(-10, 5, 10, 3.8);
@@ -184,8 +210,10 @@ function setParticleColors() {
 
   for (let i = 0; i < model.particles.length; ++i) {
     const p = model.particles[i];
-    p.color = new THREE.Color();
-    p.color.setHSL(hashToRandom(i), 0.77, 0.45);
+    const colorHSLStr = palette[i%palette.length];
+    p.color = new THREE.Color(colorHSLStr);
+    // p.color = new THREE.Color();
+    // p.color.setHSL(hashToRandom(i), 0.77, 0.45);
   }
 
   function hashToRandom(input) {
@@ -204,7 +232,8 @@ function setParticleColors() {
 
 function updateModel(time) {
   model.yRot = time * rotSpeed;
-  model.heave = 0.1 + 0.45 * (Math.sin(time * heaveSpeed) + 1);
+  model.insetHeave = 0.1 + 0.45 * (Math.sin(time * insetHeaveSpeed) + 1);
+  model.displaceHeave = 0.1 + 0.45 * (Math.sin(time * displaceHeaveSpeed) + 1);
   for (const p of model.particles) p.update(time, volumeTester);
 }
 
@@ -223,6 +252,7 @@ function resizeCanvas() {
 function frame(time) {
   if (!G) return;
   updateModel(time);
+  threeCache.rg.rotation.set(0, model.yRot, 0);
   buildWorld();
   G.render();
 

@@ -3,6 +3,9 @@ import {EffectComposer} from "three/addons/postprocessing/EffectComposer.js";
 import {RenderPass} from "three/addons/postprocessing/RenderPass.js";
 import {BokehPass} from "three/addons/postprocessing/BokehPass.js";
 import {OutputPass} from "three/addons/postprocessing/OutputPass.js";
+import {ShaderPass} from "three/addons/postprocessing/ShaderPass.js";
+import {vignetteShader} from "./vignette-shader.js";
+import {win} from "codemirror/src/util/dom.js";
 
 export class Graphics {
 
@@ -36,6 +39,14 @@ export class Graphics {
     this.composer = new EffectComposer(this.renderer);
     this.renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(this.renderPass);
+    this.vignettePass = new ShaderPass(vignetteShader);
+    this.vignettePass.uniforms[ "resolution" ].value = new THREE.Vector2(
+      elmCanvas.clientWidth * window.devicePixelRatio,
+      elmCanvas.clientHeight * window.devicePixelRatio);
+    this.vignettePass.uniforms[ "radius" ].value = 0.8;
+    this.vignettePass.uniforms[ "softness" ].value = .3;
+    this.vignettePass.uniforms[ "gain" ].value = .3;
+    this.composer.addPass(this.vignettePass);
     this.outputPass = new OutputPass();
     this.composer.addPass(this.outputPass);
 
@@ -48,6 +59,7 @@ export class Graphics {
     this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.vignettePass.uniforms[ "resolution" ].value = new THREE.Vector2(w, h);
   }
 
   render() {
