@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import {mulberry32, rand, setRandomGenerator} from "./random.js";
+import {mulberry32, setRandomGenerator, rand, shuffle} from "./random.js";
 import createVoroPP from "./voropp-module.js";
 import Audio from "./audio.js";
 import {Graphics} from "./graphics.js";
@@ -8,12 +8,13 @@ import * as Sharder from "./sharder.js";
 const showEqualizer = true;
 const animating = true;
 const useShadow = true;
-const rotSpeed = 0.0003;
+const rotSpeed = 0.0001;
 const insetHeaveSpeed = 0.0009;
 const insetBy = 0.01;
 const displaceHeaveSpeed = 0.0007;
 const displaceBy = 3;
 const audioReactive = true;
+const audioBeatThreshold = 20;
 const audioDisplayFactor = 0.15;
 const particleGap = 0.1;
 const bgUrl = "static/berries-blur.jpg";
@@ -66,8 +67,8 @@ async function init() {
   console.log(`Seed: ${seed}`);
   setRandomGenerator(mulberry32(seed));
 
-  audio = new Audio({ scale: 0.5, volSamples: 3 });
-  audio.beat.threshold = 30;
+  audio = new Audio({ scale: 0.5, volSamples: 5 });
+  audio.beat.threshold = audioBeatThreshold;
   setTimeout(() => {
     elmEq.querySelector("#beat .lamp").classList.remove("on");
   }, 1000);
@@ -100,8 +101,8 @@ async function init() {
 
 function buildWorld() {
 
-  clearTemporaryObjects();
   const rg = threeCache.rg;
+  rg.clear();
 
   const points = [];
   model.particles.forEach(p => points.push(p.pos));
@@ -135,31 +136,31 @@ function buildWorld() {
   }
   else if (renderMode == "solids") {
     // Add shards
-    for (const shard of shards) {
-      const geo = new THREE.BufferGeometry();
-      const vertBuf = new Float32Array(shard.triVerts.length * 3);
-      for (let i = 0; i < shard.triVerts.length; ++i) {
-        vertBuf[3 * i] = shard.triVerts[i].x;
-        vertBuf[3 * i + 1] = shard.triVerts[i].y;
-        vertBuf[3 * i + 2] = -shard.triVerts[i].z;
+    for (let i = 0; i < shards.length; ++i) {
+      const shard = shards[i];
+      const cg = threeCache.geos[shard.id];
+      if (!cg.geo || cg.geo.getAttribute("position").count != shard.triVerts.length) {
+        if (cg.geo) cg.geo.dispose();
+        cg.geo = new THREE.BufferGeometry();
       }
-      geo.setAttribute("position", new THREE.BufferAttribute(vertBuf, 3));
-      geo.computeVertexNormals();
+      const arrSz = shard.triVerts.length * 3;
+      if (!cg.arr || cg.arr.length != arrSz)
+        cg.arr = new Float32Array(arrSz);
+      for (let j = 0; j < shard.triVerts.length; ++j) {
+        cg.arr[3 * j] = shard.triVerts[j].x;
+        cg.arr[3 * j + 1] = shard.triVerts[j].y;
+        cg.arr[3 * j + 2] = -shard.triVerts[j].z;
+      }
+      cg.geo.setAttribute("position", new THREE.BufferAttribute(cg.arr, 3));
+      cg.geo.computeVertexNormals();
       const mat = threeCache.materials[shard.id];
-      const mesh = new THREE.Mesh(geo, mat);
+      const mesh = new THREE.Mesh(cg.geo, mat);
       if (useShadow) {
         mesh.castShadow = mesh.receiveShadow = true;
       }
       rg.add(mesh);
-      threeCache.geos.push(geo);
     }
   }
-}
-
-function clearTemporaryObjects() {
-  threeCache.rg.clear();
-  threeCache.geos.forEach(g => g.dispose());
-  threeCache.geos.length = 0;
 }
 
 function initWorld() {
@@ -173,24 +174,7 @@ function initWorld() {
   threeCache.rg = new THREE.Group();
   G.scene.add(threeCache.rg);
 
-  for (let i = 0; i < model.particles.length; ++i) {
-    // const mat = new THREE.MeshPhysicalMaterial({
-    //   color: model.particles[i].color,
-    //   metalness: 0,
-    //   roughness: 0,
-    //   reflectivity: 0.5,
-    //   sheen: 0,
-    //   specularIntensity: 1,
-    //   // transmission: 0.9,
-    // });
-    const mat = new THREE.MeshLambertMaterial({
-      color: model.particles[i].color,
-      transparent: true,
-      opacity: 0.5,
-      blending: THREE.AdditiveBlending,
-    });
-    threeCache.materials.push(mat);
-  }
+  initGeosAndMaterials();
 
   const shadowMapSz = 1024;
   const shadowCamDim = 1;
@@ -224,14 +208,47 @@ function initWorld() {
   // G.scene.add(new THREE.CameraHelper(dirLight2.shadow.camera));
 }
 
+function initGeosAndMaterials() {
+
+  threeCache.geos.forEach(geo => {
+    if (geo.geo) geo.geo.dispose()
+  });
+  threeCache.geos.length = 0;
+  threeCache.materials.forEach(mat => mat.dispose());
+  threeCache.materials.length = 0;
+
+  for (let i = 0; i < model.particles.length; ++i) {
+    // const mat = new THREE.MeshPhysicalMaterial({
+    //   color: model.particles[i].color,
+    //   metalness: 0,
+    //   roughness: 0,
+    //   reflectivity: 0.5,
+    //   sheen: 0,
+    //   specularIntensity: 1,
+    //   // transmission: 0.9,
+    // });
+    const mat = new THREE.MeshLambertMaterial({
+      color: model.particles[i].color,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
+    });
+    threeCache.materials.push(mat);
+    threeCache.geos.push({
+      geo: null,
+      arr: null,
+    });
+  }
+}
+
 function setParticleColors() {
+
+  shuffle(palette);
 
   for (let i = 0; i < model.particles.length; ++i) {
     const p = model.particles[i];
     const colorHSLStr = palette[i%palette.length];
     p.color = new THREE.Color(colorHSLStr);
-    // p.color = new THREE.Color();
-    // p.color.setHSL(hashToRandom(i), 0.77, 0.45);
   }
 
   function hashToRandom(input) {
@@ -284,9 +301,10 @@ function frame(time) {
   audio.tick();
 
   if (audioReactive && audio.isBeat) {
-    model.particles.length = 0;
-    model.particles.push(...Sharder.genRegularParticles(particleGap));
+    // model.particles.length = 0;
+    // model.particles.push(...Sharder.genRegularParticles(particleGap));
     setParticleColors();
+    initGeosAndMaterials();
   }
 
   updateEqualizer();
