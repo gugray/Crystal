@@ -43,9 +43,9 @@ export class Graphics {
     this.vignettePass.uniforms[ "resolution" ].value = new THREE.Vector2(
       elmCanvas.clientWidth * window.devicePixelRatio,
       elmCanvas.clientHeight * window.devicePixelRatio);
-    this.vignettePass.uniforms[ "radius" ].value = 0.8;
-    this.vignettePass.uniforms[ "softness" ].value = .3;
-    this.vignettePass.uniforms[ "gain" ].value = .3;
+    this.vignettePass.uniforms["radius"].value = 1.4;
+    this.vignettePass.uniforms["softness"].value = 0.5;
+    this.vignettePass.uniforms["gain"].value = 0.95;
     this.composer.addPass(this.vignettePass);
     this.outputPass = new OutputPass();
     this.composer.addPass(this.outputPass);
