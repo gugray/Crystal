@@ -67,11 +67,11 @@ async function runComposer() {
 
 async function runProjector() {
   const entryPoints = [
-    "src/projector/index.html",
-    "src/projector/app.css",
-    "src/projector/app.js",
-    "src/projector/voropp-module.wasm",
-    "src/projector/static/*",
+    "src/projector-voro/index.html",
+    "src/projector-voro/app.css",
+    "src/projector-voro/app.js",
+    "src/projector-voro/voropp-module.wasm",
+    "src/projector-voro/static/*",
   ];
   const plugins = [
     glsl(),
