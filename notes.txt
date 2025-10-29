@@ -4,6 +4,7 @@ TO-DO
 -- Break up buildBodies; fix reuse in particles mode
 -- Muiltiple times
 -- Remove cycles; time-based animations
+-- geos+materials => bodies
 
 
 Spookie movies

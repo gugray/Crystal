@@ -12,7 +12,7 @@ const useShadow = true;
 
 const particleGap = 0.2;
 const bgUrl = "static/berries-blur.jpg";
-const renderMode = "solids"; // particles, solids
+const renderMode = "boxes"; // boxes, shards
 
 const rotSpeed = 0.0001;
 const nRotsPerLoop = 1;
@@ -68,8 +68,8 @@ const model = {
 
 const threeCache = {
   rootGroup: null,
-  materials: [],
-  geos: [],
+  materials: [], // As many as particles
+  geos: [], // As many as particles
 }
 
 async function init() {
@@ -177,10 +177,9 @@ function reInitGeosAndMaterials() {
   }
 }
 
-function buildBodies() {
+function rebuildBodies() {
 
-  const rg = threeCache.rootGroup;
-  rg.clear();
+  threeCache.rootGroup.clear();
 
   const points = [];
   model.particles.forEach(p => points.push(p.pos));
@@ -195,65 +194,79 @@ function buildBodies() {
     shards.push(shard);
   }
 
-  if (renderMode == "particles") {
-    // Diag: Add particles as tiny cubes
-    for (let i = 0; i < model.particles.length; ++i) {
-      const p = model.particles[i];
-      const sz = 0.05;
-      const geo = new THREE.BoxGeometry(sz, sz, sz, 1, 1, 1);
-      const mesh = new THREE.Mesh(geo, threeCache.materials[i]);
-      mesh.position.set(p.pos.x, p.pos.y, p.pos.z);
-      if (useShadow) {
-        mesh.castShadow = mesh.receiveShadow = true;
-      }
-      rg.add(mesh);
+  if (renderMode == "boxes")
+    rebuildParticleBoxes(threeCache.rootGroup, shards)
+  else if (renderMode == "shards")
+    rebuildShardBodies(threeCache.rootGroup, shards)
+}
+
+function rebuildParticleBoxes(group, shards) {
+  const yAxis = new THREE.Vector3(0, 1, 0);
+
+  for (let i = 0; i < shards.length; ++i) {
+
+    const shard = shards[i];
+
+    const sz = 0.05;
+    const cg = threeCache.geos[shard.id];
+    if (!cg.geo) {
+      cg.geo = new THREE.BoxGeometry(sz, sz, sz, 1, 1, 1);
     }
+
+    const mesh = new THREE.Mesh(cg.geo, threeCache.materials[shard.id]);
+    mesh.position.set(shard.offset.x, shard.offset.y, -shard.offset.z);
+    mesh.position.applyAxisAngle(yAxis, model.yRot);
+    if (useShadow) {
+      mesh.castShadow = mesh.receiveShadow = true;
+    }
+    cg.mesh = mesh;
+    group.add(mesh);
   }
-  else if (renderMode == "solids") {
-    const vec = new Vector3();
-    const yAxis = new THREE.Vector3(0, 1, 0);
+}
 
-    // Add shards
-    for (let i = 0; i < shards.length; ++i) {
+function rebuildShardBodies(group, shards) {
+  const vec = new Vector3();
+  const yAxis = new THREE.Vector3(0, 1, 0);
 
-      const shard = shards[i];
-      const cg = threeCache.geos[shard.id];
-      if (!cg.geo || cg.geo.getAttribute("position").count != shard.triVerts.length) {
-        if (cg.geo) cg.geo.dispose();
-        cg.geo = new THREE.BufferGeometry();
-      }
+  // Add shards
+  for (let i = 0; i < shards.length; ++i) {
 
-      const arrSz = shard.triVerts.length * 3;
-      if (!cg.arr || cg.arr.length != arrSz)
-        cg.arr = new Float32Array(arrSz);
+    const shard = shards[i];
 
-      for (let j = 0; j < shard.triVerts.length; ++j) {
-        vec.copy(shard.triVerts[j]);
-        vec.add(shard.offset);
-        vec.z = -vec.z;
-        vec.applyAxisAngle(yAxis, model.yRot);
-        cg.arr[3 * j] = vec.x;
-        cg.arr[3 * j + 1] = vec.y;
-        cg.arr[3 * j + 2] = vec.z;
-      }
-      cg.geo.setAttribute("position", new THREE.BufferAttribute(cg.arr, 3));
-      cg.geo.computeVertexNormals();
-      const mat = threeCache.materials[shard.id];
-      const mesh = new THREE.Mesh(cg.geo, mat);
-      if (useShadow) {
-        mesh.castShadow = mesh.receiveShadow = true;
-      }
-      rg.add(mesh);
-      cg.mesh = mesh;
-
-      // break;
+    const cg = threeCache.geos[shard.id];
+    if (!cg.geo || cg.geo.getAttribute("position").count != shard.triVerts.length) {
+      if (cg.geo) cg.geo.dispose();
+      cg.geo = new THREE.BufferGeometry();
     }
+
+    const arrSz = shard.triVerts.length * 3;
+    if (!cg.arr || cg.arr.length != arrSz)
+      cg.arr = new Float32Array(arrSz);
+
+    for (let j = 0; j < shard.triVerts.length; ++j) {
+      vec.copy(shard.triVerts[j]);
+      vec.add(shard.offset);
+      vec.z = -vec.z;
+      vec.applyAxisAngle(yAxis, model.yRot);
+      cg.arr[3 * j] = vec.x;
+      cg.arr[3 * j + 1] = vec.y;
+      cg.arr[3 * j + 2] = vec.z;
+    }
+    cg.geo.setAttribute("position", new THREE.BufferAttribute(cg.arr, 3));
+    cg.geo.computeVertexNormals();
+    const mat = threeCache.materials[shard.id];
+    const mesh = new THREE.Mesh(cg.geo, mat);
+    if (useShadow) {
+      mesh.castShadow = mesh.receiveShadow = true;
+    }
+    cg.mesh = mesh;
+    group.add(mesh);
   }
 }
 
 function setParticleColors() {
 
-  shuffle(palette);
+  // shuffle(palette);
 
   for (let i = 0; i < model.particles.length; ++i) {
     const p = model.particles[i];
@@ -326,7 +339,7 @@ function frame(time) {
 
   if (!G) return;
   updateModel(time);
-  buildBodies();
+  rebuildBodies();
   G.render();
 
   if (animating) requestAnimationFrame(frame);
