@@ -16,12 +16,9 @@ const bgUrl = "static/berries-blur.jpg";
 const renderMode = "shards"; // boxes, shards
 
 const rotSpeed = 0.0003;
-const nRotsPerLoop = 1;
 const insetHeaveSpeed = 0.0009;
-const nInsetHeavesPerLoop = 2;
 const insetBy = 0.02; // 0.01
 const displaceHeaveSpeed = 0.0007;
-const nDisplaceHeavesPerLoop = 1;
 const displaceBy = 3; // 3
 
 const audioReactive = false;
@@ -54,6 +51,8 @@ let voroMod;
 let audio;
 let elmCanvas, w, h;
 let elmEq, elmFrameIx;
+
+let videoTexture;
 
 const volume = [-1, 1, -1, 1, -1, 1];
 const walls = Sharder.genTetraWalls();
@@ -104,6 +103,8 @@ async function init() {
     void document.documentElement.requestFullscreen();
   });
 
+  initVideo();
+
   model.particles.push(...Sharder.genRegularParticles(particleGap));
   setParticleColors();
   console.log(`Particle count: ${model.particles.length}`);
@@ -111,13 +112,25 @@ async function init() {
   requestAnimationFrame(frame);
 }
 
+function initVideo() {
+  const elmVideo = document.createElement('video');
+  elmVideo.src = "/static/swing-sin.mp4";
+  elmVideo.crossOrigin = "anonymous";
+  elmVideo.loop = true;
+  elmVideo.muted = true;
+  void elmVideo.play();
+  videoTexture = new THREE.VideoTexture(elmVideo);
+}
+
 function initScene() {
 
   const loader = new THREE.TextureLoader();
-  loader.load(bgUrl, tx => {
-    G.scene.background = tx;
-    G.scene.backgroundIntensity = 0.0; // 0.04
-  });
+  // loader.load(bgUrl, tx => {
+  //   G.scene.background = tx;
+  //   G.scene.backgroundIntensity = 0.04; // 0.04
+  // });
+
+  G.scene.background = videoTexture;
 
   threeCache.rootGroup = new THREE.Group();
   G.scene.add(threeCache.rootGroup);
@@ -346,6 +359,7 @@ function frame(msec) {
   if (!G) return;
   updateModel();
   rebuildBodies();
+
   G.render();
 
   if (animating) requestAnimationFrame(frame);

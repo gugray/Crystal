@@ -37,6 +37,8 @@ export class Graphics {
     this.renderer.setPixelRatio(window.devicePixelRatio);
 
     this.composer = new EffectComposer(this.renderer);
+    this.composer.autoClear = false;
+
     this.renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(this.renderPass);
 
@@ -54,7 +56,6 @@ export class Graphics {
 
     this.outputPass = new OutputPass();
     this.composer.addPass(this.outputPass);
-
   }
 
   updateSize() {
@@ -64,7 +65,8 @@ export class Graphics {
     this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.vignettePass.uniforms[ "resolution" ].value = new THREE.Vector2(w, h);
+    if (this.vignettePass)
+      this.vignettePass.uniforms[ "resolution" ].value = new THREE.Vector2(w, h);
   }
 
   render() {
