@@ -5,6 +5,7 @@ import {BokehPass} from "three/addons/postprocessing/BokehPass.js";
 import {OutputPass} from "three/addons/postprocessing/OutputPass.js";
 import {ShaderPass} from "three/addons/postprocessing/ShaderPass.js";
 import {vignetteShader} from "./vignette-shader.js";
+import {ditherShader} from "./dither-shader.js";
 
 export class Graphics {
 
@@ -38,14 +39,19 @@ export class Graphics {
     this.composer = new EffectComposer(this.renderer);
     this.renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(this.renderPass);
-    this.vignettePass = new ShaderPass(vignetteShader);
-    this.vignettePass.uniforms[ "resolution" ].value = new THREE.Vector2(
-      elmCanvas.clientWidth * window.devicePixelRatio,
-      elmCanvas.clientHeight * window.devicePixelRatio);
-    this.vignettePass.uniforms["radius"].value = 1.4;
-    this.vignettePass.uniforms["softness"].value = 0.5;
-    this.vignettePass.uniforms["gain"].value = 0.95;
-    this.composer.addPass(this.vignettePass);
+
+    // this.vignettePass = new ShaderPass(vignetteShader);
+    // this.vignettePass.uniforms[ "resolution" ].value = new THREE.Vector2(
+    //   elmCanvas.clientWidth * window.devicePixelRatio,
+    //   elmCanvas.clientHeight * window.devicePixelRatio);
+    // this.vignettePass.uniforms["radius"].value = 1.4;
+    // this.vignettePass.uniforms["softness"].value = 0.5;
+    // this.vignettePass.uniforms["gain"].value = 0.95;
+    // this.composer.addPass(this.vignettePass);
+
+    this.ditherPass = new ShaderPass(ditherShader);
+    this.composer.addPass(this.ditherPass);
+
     this.outputPass = new OutputPass();
     this.composer.addPass(this.outputPass);
 

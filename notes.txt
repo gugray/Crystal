@@ -5,7 +5,7 @@ OK Break up buildBodies; fix reuse in particles mode
 OK geos+materials => bodies
 OK Multiple, reactive times
 OK Remove cycles; time-based animations
-
+-- dithering shader
 
 Spookie movies
 ===================

@@ -7,7 +7,7 @@ import Audio from "./audio.js";
 import {Graphics} from "./graphics.js";
 import * as Sharder from "./sharder.js";
 
-const showEqualizer = true;
+const showEqualizer = false;
 const animating = true;
 const useShadow = true;
 
@@ -116,7 +116,7 @@ function initScene() {
   const loader = new THREE.TextureLoader();
   loader.load(bgUrl, tx => {
     G.scene.background = tx;
-    G.scene.backgroundIntensity = 0.04;
+    G.scene.backgroundIntensity = 0.0; // 0.04
   });
 
   threeCache.rootGroup = new THREE.Group();

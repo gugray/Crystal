@@ -50,6 +50,7 @@ async function runProjector() {
       ".aiff": "copy",
       ".woff2": "copy",
       ".wasm": "copy",
+      ".mp4": "copy",
     },
     write: true,
     metafile: true,
