@@ -1,0 +1,22 @@
+TO-DO
+===================
+
+-- Break up buildBodies; fix reuse in particles mode
+-- Muiltiple times
+-- Remove cycles; time-based animations
+
+
+Spookie movies
+===================
+
+Buster Keaton: The Haunted House
+https://youtu.be/cKOoOK09HvQ?si=o0IVlgZ5LxraLs0J&t=905
+
+15:05 -> 15:27
+16:30 -> 16:09
+
+Flip the Frog
+https://www.youtube.com/watch?v=v9dDmmBk6po
+
+Swing You Sinners
+https://www.youtube.com/watch?v=vH1aOMuNFvI

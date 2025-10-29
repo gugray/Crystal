@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import {Vector3} from "three";
 import {mulberry32, setRandomGenerator, rand, shuffle} from "./random.js";
 import createVoroPP from "./voropp-module.js";
 import Audio from "./audio.js";
@@ -6,7 +7,7 @@ import {Graphics} from "./graphics.js";
 import * as Sharder from "./sharder.js";
 
 const showEqualizer = true;
-const animating = true;
+const animating = false;
 const useShadow = true;
 
 const particleGap = 0.2;
@@ -209,21 +210,31 @@ function buildBodies() {
     }
   }
   else if (renderMode == "solids") {
+    const vec = new Vector3();
+    const yAxis = new THREE.Vector3(0, 1, 0);
+
     // Add shards
     for (let i = 0; i < shards.length; ++i) {
+
       const shard = shards[i];
       const cg = threeCache.geos[shard.id];
       if (!cg.geo || cg.geo.getAttribute("position").count != shard.triVerts.length) {
         if (cg.geo) cg.geo.dispose();
         cg.geo = new THREE.BufferGeometry();
       }
+
       const arrSz = shard.triVerts.length * 3;
       if (!cg.arr || cg.arr.length != arrSz)
         cg.arr = new Float32Array(arrSz);
+
       for (let j = 0; j < shard.triVerts.length; ++j) {
-        cg.arr[3 * j] = shard.triVerts[j].x;
-        cg.arr[3 * j + 1] = shard.triVerts[j].y;
-        cg.arr[3 * j + 2] = -shard.triVerts[j].z;
+        vec.copy(shard.triVerts[j]);
+        vec.add(shard.offset);
+        vec.z = -vec.z;
+        vec.applyAxisAngle(yAxis, model.yRot);
+        cg.arr[3 * j] = vec.x;
+        cg.arr[3 * j + 1] = vec.y;
+        cg.arr[3 * j + 2] = vec.z;
       }
       cg.geo.setAttribute("position", new THREE.BufferAttribute(cg.arr, 3));
       cg.geo.computeVertexNormals();
@@ -234,6 +245,8 @@ function buildBodies() {
       }
       rg.add(mesh);
       cg.mesh = mesh;
+
+      // break;
     }
   }
 }
@@ -313,7 +326,6 @@ function frame(time) {
 
   if (!G) return;
   updateModel(time);
-  threeCache.rootGroup.rotation.set(0, model.yRot, 0);
   buildBodies();
   G.render();
 

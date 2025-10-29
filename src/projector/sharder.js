@@ -79,51 +79,38 @@ export class Shard {
   constructor(data, displacement) {
 
     this.id = data.id;
-    this.particle = data.particle;
+    this.particlePos = data.particle;
     this.vertsRel = data.insetVertices;
     this.faceVerts = data.insetFaceVertIxs;
-    this.vertsAbs = [];
+    this.offset = this.particlePos.clone();
 
     // Offset shards ("heave")
     if (displacement != 0) {
-      const pnorm = this.particle.clone();
+      const pnorm = this.particlePos.clone();
       pnorm.y = 0;
       pnorm.normalize();
       pnorm.multiplyScalar(0.05 * displacement);
-      this.particle.add(pnorm);
-      this.particle.y *= (1 + 0.2 * displacement);
-      // this.particle.multiplyScalar(1.3);
+      this.offset.add(pnorm);
+      this.offset.y *=  (1 + 0.2 * displacement);
     }
-
-    // Calculate absolute vertex positiions
-    this.vertsRel.forEach(v => this.vertsAbs.push(v.clone().add(this.particle)));
 
     // Calculate all of this shard's surface triangles
-    this.triVerts = calcTriangles(this.faceVerts, this.vertsAbs);
-  }
-
-  getFacePts(faceIx) {
-    const vertIxs = this.faceVerts[faceIx];
-    const res = [];
-    for (const vertIx of vertIxs) {
-      res.push(this.vertsAbs[vertIx].clone());
-    }
-    return res;
+    this.triVerts = calcTriangles(this.faceVerts, this.vertsRel);
   }
 }
 
-function calcTriangles(faceVerts, vertsAbs) {
+function calcTriangles(faceVerts, verts) {
   const triVerts = [];
   for (let faceIx = 0; faceIx < faceVerts.length; ++faceIx) {
     const indexes = faceVerts[faceIx];
     if (indexes.length == 3) {
-      triVerts.push(vertsAbs[indexes[0]], vertsAbs[indexes[1]], vertsAbs[indexes[2]]);
+      triVerts.push(verts[indexes[0]], verts[indexes[1]], verts[indexes[2]]);
       continue;
     }
-    const center = calcCenter(vertsAbs, indexes);
+    const center = calcCenter(verts, indexes);
     for (let i = 0; i < indexes.length; ++i) {
       const j = (i+1)%indexes.length;
-      triVerts.push(center, vertsAbs[indexes[i]], vertsAbs[indexes[j]]);
+      triVerts.push(center, verts[indexes[i]], verts[indexes[j]]);
     }
   }
   return triVerts;
