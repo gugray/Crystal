@@ -5,7 +5,6 @@ import {BokehPass} from "three/addons/postprocessing/BokehPass.js";
 import {OutputPass} from "three/addons/postprocessing/OutputPass.js";
 import {ShaderPass} from "three/addons/postprocessing/ShaderPass.js";
 import {vignetteShader} from "./vignette-shader.js";
-import {win} from "codemirror/src/util/dom.js";
 
 export class Graphics {
 

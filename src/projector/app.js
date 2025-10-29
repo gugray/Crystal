@@ -1,33 +1,96 @@
 import * as THREE from "three";
-import {EffectComposer} from "three/addons/postprocessing/EffectComposer.js";
-import {RenderPass} from "three/addons/postprocessing/RenderPass.js";
-import {OutputPass} from "three/addons/postprocessing/OutputPass.js";
-import {OrbitControls} from "three/addons";
-import {mulberry32, setRandomGenerator, rand, shuffle, randn_bm} from "./random.js";
-import {SimplexNoise} from "./simplex-noise.js";
+import { PLYExporter } from 'three/addons/exporters/PLYExporter.js';
+import {mulberry32, setRandomGenerator, rand, shuffle} from "./random.js";
+import createVoroPP from "./voropp-module.js";
+import Audio from "./audio.js";
+import {Graphics} from "./graphics.js";
+import * as Sharder from "./sharder.js";
 
+const showEqualizer = false;
 const animating = true;
-// "hsl(360, 100%, 39%)",
+const useShadow = true;
+const rotSpeed = 0.0001;
+const nRotsPerLoop = 1;
+const insetHeaveSpeed = 0.0009;
+const nInsetHeavesPerLoop = 2;
+const insetBy = 0.02; // 0.01
+const displaceHeaveSpeed = 0.0007;
+const nDisplaceHeavesPerLoop = 1;
+const displaceBy = 3; // 3
+const audioReactive = false;
+const audioBeatThreshold = 20;
+const audioDisplayFactor = 0.15;
+const particleGap = 0.2;
+const bgUrl = "static/berries-blur.jpg";
+const renderMode = "solids"; // particles, solids
 
-let simplex1;
+const nLoopFrames = 600;
+let frameIx = 0;
+
+const palette = [
+  "hsl(47, 95%, 16%)",
+  "hsl(360, 100%, 39%)",
+  "hsl(0, 100%, 50%)",
+  "hsl(67, 91%, 27%)",
+  "hsl(222, 87%, 74%)",
+  "hsl(236, 17%, 81%)",
+  "hsl(65, 96%, 19%)",
+  "hsl(34, 100%, 49%)",
+];
+
 let seed = Math.round(Math.random() * 65535);
 // seed = 48923;
 
-let elmCanvas, ar;
-let scene, camera, renderer, composer, controls;
-let group;
+/**
+ * @type {Graphics}
+ */
+let G;
+let voroMod;
+let audio;
+let elmCanvas, w, h;
+let elmEq;
+
+let volume = [-1, 1, -1, 1, -1, 1];
+let walls;
+let volumeTester;
 
 setTimeout(init, 50);
+
+const model = {
+  particles: [],
+  yRot: 0,
+  insetHeave: 1,
+  displaceHeave: 0,
+};
+
+const threeCache = {
+  rg: null,
+  materials: [],
+  geos: [],
+}
 
 async function init() {
 
   console.log(`Seed: ${seed}`);
   setRandomGenerator(mulberry32(seed));
-  simplex1 = new SimplexNoise(rand());
+
+  audio = new Audio({ scale: 0.5, volSamples: 5 });
+  audio.beat.threshold = audioBeatThreshold;
+  setTimeout(() => {
+    elmEq.querySelector("#beat .lamp").classList.remove("on");
+  }, 1000);
+
+
+  voroMod = await createVoroPP();
+  walls = Sharder.genTetraWalls();
+  volumeTester = new Sharder.VolumeTester(voroMod, volume, walls);
+
+  elmEq = document.getElementById("equalizer");
+  if (showEqualizer) elmEq.classList.add("visible");
 
   elmCanvas = document.getElementById("webgl-canvas");
-  initThree();
   resizeCanvas();
+  G = new Graphics(elmCanvas, useShadow);
   window.addEventListener("resize", () => {
     resizeCanvas();
   });
@@ -36,89 +99,178 @@ async function init() {
     void document.documentElement.requestFullscreen();
   });
 
-  buildScene();
+  model.particles.push(...Sharder.genRegularParticles(particleGap));
+  setParticleColors();
+  console.log(`Particle count: ${model.particles.length}`);
+  initWorld();
   requestAnimationFrame(frame);
 }
 
-function getSpiralPoints(btmAngle, btmRadius, climb) {
+function buildWorld() {
+
+  const rg = threeCache.rg;
+  rg.clear();
+
   const points = [];
-  const nSegs = 200;
-  const height = 10;
-  for (let i = 0; i <= nSegs; ++i) {
-    const t = i / nSegs; // [0, 1]
-    // If climb is 1, two full twists. More climb means less twists.
-    const twistAngle = t * 2 * Math.PI / climb;
-    const x = btmRadius * Math.sin(btmAngle + twistAngle);
-    const z = btmRadius * Math.cos(btmAngle + twistAngle);
-    const y = (t - 0.5) * height;
-    points.push(new THREE.Vector3(x, y, z));
+  model.particles.forEach(p => points.push(p.pos));
+  const voro = Sharder.genVoro(voroMod, volume, walls, points, model.insetHeave * insetBy);
+
+  const shards = [];
+  for (const cellData of voro) {
+    if (cellData.volume < 5e-6) continue;
+    let displaceVal = model.displaceHeave * displaceBy;
+    if (audioReactive) displaceVal += audioDisplayFactor * audio.volSmooth;
+    const shard = new Sharder.Shard(cellData, displaceVal);
+    shards.push(shard);
+    shard.triVerts = [];
+    shard.appendTriangles(shard.triVerts)
   }
-  return points;
+
+  if (renderMode == "particles") {
+    // Diag: Add particles as tiny cubes
+    for (let i = 0; i < model.particles.length; ++i) {
+      const p = model.particles[i];
+      const sz = 0.05;
+      const geo = new THREE.BoxGeometry(sz, sz, sz, 1, 1, 1);
+      const mesh = new THREE.Mesh(geo, threeCache.materials[i]);
+      mesh.position.set(p.pos.x, p.pos.y, p.pos.z);
+      if (useShadow) {
+        mesh.castShadow = mesh.receiveShadow = true;
+      }
+      rg.add(mesh);
+    }
+  }
+  else if (renderMode == "solids") {
+    // Add shards
+    for (let i = 0; i < shards.length; ++i) {
+      const shard = shards[i];
+      const cg = threeCache.geos[shard.id];
+      if (!cg.geo || cg.geo.getAttribute("position").count != shard.triVerts.length) {
+        if (cg.geo) cg.geo.dispose();
+        cg.geo = new THREE.BufferGeometry();
+      }
+      const arrSz = shard.triVerts.length * 3;
+      if (!cg.arr || cg.arr.length != arrSz)
+        cg.arr = new Float32Array(arrSz);
+      for (let j = 0; j < shard.triVerts.length; ++j) {
+        cg.arr[3 * j] = shard.triVerts[j].x;
+        cg.arr[3 * j + 1] = shard.triVerts[j].y;
+        cg.arr[3 * j + 2] = -shard.triVerts[j].z;
+      }
+      cg.geo.setAttribute("position", new THREE.BufferAttribute(cg.arr, 3));
+      cg.geo.computeVertexNormals();
+      const mat = threeCache.materials[shard.id];
+      const mesh = new THREE.Mesh(cg.geo, mat);
+      if (useShadow) {
+        mesh.castShadow = mesh.receiveShadow = true;
+      }
+      rg.add(mesh);
+      cg.mesh = mesh;
+    }
+  }
 }
 
-function buildScene() {
+function initWorld() {
 
-  group = new THREE.Group();
-  scene.add(group);
+  const loader = new THREE.TextureLoader();
+  loader.load(bgUrl, tx => {
+    G.scene.background = tx;
+    G.scene.backgroundIntensity = 0.04;
+  });
 
-  const mat = new THREE.MeshPhongMaterial({ color: "hsl(89,68%,33%)" });
+  threeCache.rg = new THREE.Group();
+  G.scene.add(threeCache.rg);
 
-  const addCurve = points => {
-    const crCurve = new THREE.CatmullRomCurve3(points);
-    const geo = new THREE.TubeGeometry(crCurve, 200, 0.05, 8, false);
-    const mesh = new THREE.Mesh(geo, mat);
-    group.add(mesh);
-  }
+  initGeosAndMaterials();
 
-  const nSpirals = 500;
-  const avgRadius = 3;
-  const radVar = 2;
-  for (let i = 0; i < nSpirals; ++i) {
-    const angle = 2 * Math.PI * rand();
-    const btmRad = randn_bm(avgRadius - radVar, avgRadius + radVar);
-    const climb = randn_bm(0.125, 4);
-    const points = getSpiralPoints(angle, btmRad, climb);
-    addCurve(points);
-  }
+  const shadowMapSz = 1024;
+  const shadowCamDim = 1;
 
   function makeDirLight(x, y, z, intensity) {
     const light = new THREE.DirectionalLight(0xffffff, intensity);
     light.position.set(x, y, z);
+    if (useShadow) {
+      light.shadow.camera.top = shadowCamDim;
+      light.shadow.camera.left = -shadowCamDim;
+      light.shadow.camera.bottom = -shadowCamDim;
+      light.shadow.camera.right = shadowCamDim;
+      light.shadow.camera.near = 10;
+      light.shadow.camera.far = 500;
+      light.shadow.mapSize.set(shadowMapSz, shadowMapSz);
+      light.shadow.radius = 0.1;
+      light.castShadow = true;
+    }
     return light;
   }
 
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
-  scene.add(ambientLight);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+  G.scene.add(ambientLight);
 
-  const dirLight1 = makeDirLight(-10, 5, -10, 3);
-  scene.add(dirLight1);
+  const dirLight1 = makeDirLight(-10, 5, 10, 3.8);
+  G.scene.add(dirLight1);
+  // G.scene.add(new THREE.CameraHelper(dirLight1.shadow.camera));
 
-  const dirLight2 = makeDirLight(1, 10, 1, 3);
-  scene.add(dirLight2);
+  const dirLight2 = makeDirLight(0, 10, -1, 1.6);
+  G.scene.add(dirLight2);
+  // G.scene.add(new THREE.CameraHelper(dirLight2.shadow.camera));
 }
 
+function initGeosAndMaterials() {
 
-function initThree() {
-
-  ar = elmCanvas.clientWidth / elmCanvas.clientHeight;
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(75, ar, 0.1, 1000);
-  camera.position.set(0, 0, 15);
-
-  renderer = new THREE.WebGLRenderer({
-    canvas: elmCanvas,
-    preserveDrawingBuffer: true,
+  threeCache.geos.forEach(geo => {
+    if (geo.geo) geo.geo.dispose()
   });
-  renderer.autoClear = false;
-  renderer.setPixelRatio(window.devicePixelRatio);
-  composer = new EffectComposer(renderer);
-  const renderPass = new RenderPass(scene, camera);
-  composer.addPass(renderPass);
-  const outputPass = new OutputPass();
-  composer.addPass(outputPass);
+  threeCache.geos.length = 0;
+  threeCache.materials.forEach(mat => mat.dispose());
+  threeCache.materials.length = 0;
 
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.update();
+  for (let i = 0; i < model.particles.length; ++i) {
+    const mat = new THREE.MeshLambertMaterial({
+      color: model.particles[i].color,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
+    });
+    threeCache.materials.push(mat);
+    threeCache.geos.push({
+      geo: null,
+      arr: null,
+    });
+  }
+}
+
+function setParticleColors() {
+
+  shuffle(palette);
+
+  for (let i = 0; i < model.particles.length; ++i) {
+    const p = model.particles[i];
+    const colorHSLStr = palette[i%palette.length];
+    p.color = new THREE.Color(colorHSLStr);
+  }
+
+  function hashToRandom(input) {
+    // Ensure the input is a positive integer
+    input = Math.floor(input);
+
+    // Bitwise manipulation for hashing
+    input = ((input >> 16) ^ input) * 0x45d9f3b;
+    input = ((input >> 16) ^ input) * 0x45d9f3b;
+    input = (input >> 16) ^ input;
+
+    // Normalize the result to a number between 0 and 1
+    return (input >>> 0) / 0xFFFFFFFF;
+  }
+}
+
+function updateModel(time) {
+  // model.yRot = time * rotSpeed;
+  // model.insetHeave = 0.1 + 0.45 * (Math.sin(time * insetHeaveSpeed) + 1);
+  // model.displaceHeave = 0.1 + 0.45 * (Math.sin(time * displaceHeaveSpeed) + 1);
+  model.yRot = Math.PI * 2 * frameIx / nLoopFrames * nRotsPerLoop;
+  model.insetHeave = 0.1 + 0.45 * (Math.sin(frameIx / nLoopFrames * nInsetHeavesPerLoop * 2 * Math.PI) + 1);
+  model.displaceHeave = 0.1 + 0.45 * (Math.sin(frameIx / nLoopFrames * nDisplaceHeavesPerLoop * 2 * Math.PI) + 1);
+  for (const p of model.particles) p.update(frameIx, nLoopFrames, volumeTester);
 }
 
 function resizeCanvas() {
@@ -128,21 +280,71 @@ function resizeCanvas() {
   let elmHeight = window.innerHeight;
   elmCanvas.style.width = elmWidth + "px";
   elmCanvas.style.height = elmHeight + "px";
-  elmCanvas.width = Math.round(elmWidth * devicePixelRatio);
-  elmCanvas.height = Math.round(elmHeight * devicePixelRatio);
+  w = elmCanvas.width = Math.round(elmWidth * devicePixelRatio);
+  h = elmCanvas.height = Math.round(elmHeight * devicePixelRatio);
+  if (G) G.updateSize();
+}
 
-  const w = elmCanvas.clientWidth;
-  const h = elmCanvas.clientHeight;
-  ar = w / h;
-  renderer.setSize(w, h);
-  composer.setSize(w, h);
-  camera.aspect = ar;
-  camera.updateProjectionMatrix();
+function updateEqualizer() {
+  if (!showEqualizer) return;
+  elmEq.querySelector("#vol .val").style.height = `${audio.vol}%`;
+  elmEq.querySelector("#vol2 .val").style.height = `${audio.volSmooth}%`;
+  elmEq.querySelector("#f0 .val").style.height = `${audio.fft[0]}%`;
+  elmEq.querySelector("#f1 .val").style.height = `${audio.fft[1]}%`;
+  elmEq.querySelector("#f2 .val").style.height = `${audio.fft[2]}%`;
+  elmEq.querySelector("#f3 .val").style.height = `${audio.fft[3]}%`;
+  if (audio.isBeat) elmEq.querySelector("#beat .lamp").classList.add("on");
+  else elmEq.querySelector("#beat .lamp").classList.remove("on");
 }
 
 function frame(time) {
-  // group.rotation.set(0, time * 0.0002, 0, "XYZ");
-  controls.update();
-  composer.render();
+
+  document.getElementById("lblFrameIx").innerText = frameIx;
+
+  // audio.tick();
+
+  if (audioReactive && audio.isBeat) {
+    // model.particles.length = 0;
+    // model.particles.push(...Sharder.genRegularParticles(particleGap));
+    setParticleColors();
+    initGeosAndMaterials();
+  }
+
+  updateEqualizer();
+
+  if (!G) return;
+  updateModel(time);
+  threeCache.rg.rotation.set(0, model.yRot, 0);
+  buildWorld();
+  G.render();
+
+  if (frameIx < nLoopFrames) void exportFrame();
+
   if (animating) requestAnimationFrame(frame);
+  ++frameIx;
+}
+
+const exporter = new PLYExporter();
+
+async function exportFrame() {
+  const shards = [];
+  for (const mesh of threeCache.rg.children) {
+    const ply = exporter.parse(mesh, {});
+    const clr = mesh.material.color;
+    shards.push({
+      ply: ply,
+      color: [clr.r, clr.g, clr.b],
+    });
+  }
+  const frameData = {
+    frameIx: frameIx,
+    shards: shards,
+  };
+  await fetch('http://localhost:8090/frame', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(frameData),
+  });
 }

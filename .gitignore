@@ -1,8 +1,5 @@
-data
-data.lnk
-public
-.DS_Store
 node_modules
-.idea
+public
 yarn-error.log
-data/clip*
+.DS_Store
+.idea

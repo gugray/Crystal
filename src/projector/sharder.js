@@ -7,31 +7,41 @@ const wallD = 0.4;
 
 export class Particle {
 
-  constructor(pos) {
-    this.pos = pos.clone();
+  constructor(pos, axis, cyclesPerLoop, cycleOfs) {
     this.orig = pos.clone();
-    this.velo = new Vector3();
+    this.pos = pos.clone();
+    this.axis = axis.clone();
+    this.cyclesPerLoop = cyclesPerLoop;
+    this.cycleOfs = cycleOfs;
+
+    this.update(0);
+    // this.orig = pos.clone();
+    // this.velo = new Vector3();
   }
 
-  update(time, volumeTester) {
+  update(frameIx, nLoopFrames, volumeTester) {
 
-    const particleRandomGain = 0.0002;
+    const cycle = this.cycleOfs + this.cyclesPerLoop * frameIx / nLoopFrames;
+    const animGain = Math.sin(cycle * 2 * Math.PI)
+    this.pos = this.orig.clone().add(this.axis.clone().multiplyScalar(animGain));
 
-    this.pos.add(this.velo);
-    if (volumeTester && !volumeTester.isPointInside(this.pos.x, this.pos.y, this.pos.z)) {
-      this.pos.sub(this.velo);
-      this.velo.set(0, 0, 0);
-    }
-
-    this.velo.x += particleRandomGain * (rand() - 0.5);
-    this.velo.y += particleRandomGain * (rand() - 0.5);
-    this.velo.z += particleRandomGain * (rand() - 0.5);
-    const vec = this.pos.clone().sub(this.orig);
-    const dist = vec.length();
-    vec.normalize();
-    vec.multiplyScalar(Math.pow(dist, 6));
-    this.velo.sub(vec);
-    if (this.velo.length() > 0.0001) this.velo.multiplyScalar(0.999);
+    // const particleRandomGain = 0.0002;
+    //
+    // this.pos.add(this.velo);
+    // if (volumeTester && !volumeTester.isPointInside(this.pos.x, this.pos.y, this.pos.z)) {
+    //   this.pos.sub(this.velo);
+    //   this.velo.set(0, 0, 0);
+    // }
+    //
+    // this.velo.x += particleRandomGain * (rand() - 0.5);
+    // this.velo.y += particleRandomGain * (rand() - 0.5);
+    // this.velo.z += particleRandomGain * (rand() - 0.5);
+    // const vec = this.pos.clone().sub(this.orig);
+    // const dist = vec.length();
+    // vec.normalize();
+    // vec.multiplyScalar(Math.pow(dist, 6));
+    // this.velo.sub(vec);
+    // if (this.velo.length() > 0.0001) this.velo.multiplyScalar(0.999);
   }
 }
 
@@ -67,24 +77,44 @@ export function genRegularParticles(gap) {
     const xzGap = gap * Math.pow(2, q * 2);
     for (let x = 0; x <= 1; x += xzGap) {
       for (let z = 0; z <= 1; z += xzGap) {
-        let p = new Particle(new Vector3(x, y, z));
-        rndMove(p, xzGap);
+        let animp = makeAnimParams(xzGap);
+        let p = new Particle(new Vector3(x, y, z), ...animp);
         res.push(p);
         if (x != 0 && z != 0) {
-          p = new Particle(new Vector3(-x, y, z));
-          rndMove(p, xzGap);
+          animp = makeAnimParams(xzGap);
+          p = new Particle(new Vector3(-x, y, z), ...animp);
           res.push(p);
-          p = new Particle(new Vector3(-x, y, -z));
-          rndMove(p, xzGap);
+          animp = makeAnimParams(xzGap);
+          p = new Particle(new Vector3(-x, y, -z), ...animp);
           res.push(p);
-          p = new Particle(new Vector3(x, y, -z));
-          rndMove(p, xzGap);
+          animp = makeAnimParams(xzGap);
+          p = new Particle(new Vector3(x, y, -z), ...animp);
           res.push(p);
         }
       }
     }
   }
   return res;
+
+  function makeAnimParams(xzGap) {
+
+    let tilt = rand_range(20, 70);
+    tilt = tilt / 180 * Math.PI;
+    let rot = rand_range(0, 180);
+    rot = rot / 180 * Math.PI;
+    let ampl = rand_range(0.05, xzGap * 0.9);
+    let axis = new Vector3(1, 0, 0);
+    axis.applyAxisAngle(new Vector3(0, 0, 1), tilt);
+    axis.applyAxisAngle(new Vector3(0, 1, 0), rot);
+    axis.multiplyScalar(ampl);
+
+    axis = new Vector3(0, 0.1, 0);
+
+    let cyclesPerLoop = 1;
+    if (rand() < 0.2) cyclesPerLoop = 2;
+    let cycleOfs = rand();
+    return [axis, cyclesPerLoop, cycleOfs];
+  }
 
   function rndMove(part, gain) {
     const mul = 0.2;
