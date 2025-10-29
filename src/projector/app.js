@@ -2,19 +2,20 @@ import * as THREE from "three";
 import {Vector3} from "three";
 import {mulberry32, setRandomGenerator, rand, shuffle} from "./random.js";
 import createVoroPP from "./voropp-module.js";
+import {TK} from "./time.js";
 import Audio from "./audio.js";
 import {Graphics} from "./graphics.js";
 import * as Sharder from "./sharder.js";
 
 const showEqualizer = true;
-const animating = false;
+const animating = true;
 const useShadow = true;
 
 const particleGap = 0.2;
 const bgUrl = "static/berries-blur.jpg";
 const renderMode = "shards"; // boxes, shards
 
-const rotSpeed = 0.0001;
+const rotSpeed = 0.0003;
 const nRotsPerLoop = 1;
 const insetHeaveSpeed = 0.0009;
 const nInsetHeavesPerLoop = 2;
@@ -29,6 +30,7 @@ const audioDisplayFactor = 0.15;
 
 const nLoopFrames = 600;
 let frameIx = 0;
+let lastMsec = 0;
 
 const palette = [
   "hsl(47, 95%, 16%)",
@@ -51,7 +53,7 @@ let G;
 let voroMod;
 let audio;
 let elmCanvas, w, h;
-let elmEq;
+let elmEq, elmFrameIx;
 
 const volume = [-1, 1, -1, 1, -1, 1];
 const walls = Sharder.genTetraWalls();
@@ -89,6 +91,7 @@ async function init() {
 
   elmEq = document.getElementById("equalizer");
   if (showEqualizer) elmEq.classList.add("visible");
+  elmFrameIx = document.getElementById("lblFrameIx");
 
   elmCanvas = document.getElementById("webgl-canvas");
   resizeCanvas();
@@ -287,14 +290,11 @@ function setParticleColors() {
   }
 }
 
-function updateModel(time) {
-  // model.yRot = time * rotSpeed;
-  // model.insetHeave = 0.1 + 0.45 * (Math.sin(time * insetHeaveSpeed) + 1);
-  // model.displaceHeave = 0.1 + 0.45 * (Math.sin(time * displaceHeaveSpeed) + 1);
-  model.yRot = Math.PI * 2 * frameIx / nLoopFrames * nRotsPerLoop;
-  model.insetHeave = 0.1 + 0.45 * (Math.sin(frameIx / nLoopFrames * nInsetHeavesPerLoop * 2 * Math.PI) + 1);
-  model.displaceHeave = 0.1 + 0.45 * (Math.sin(frameIx / nLoopFrames * nDisplaceHeavesPerLoop * 2 * Math.PI) + 1);
-  for (const p of model.particles) p.update(frameIx, nLoopFrames);
+function updateModel() {
+  model.yRot = TK.stable * rotSpeed;
+  model.insetHeave = 0.1 + 0.45 * (Math.sin(TK.stable * insetHeaveSpeed) + 1);
+  model.displaceHeave = 0.1 + 0.45 * (Math.sin(TK.stable * displaceHeaveSpeed) + 1);
+  for (const p of model.particles) p.update(TK.stable);
 }
 
 function resizeCanvas() {
@@ -321,11 +321,18 @@ function updateEqualizer() {
   else elmEq.querySelector("#beat .lamp").classList.remove("on");
 }
 
-function frame(time) {
-
-  document.getElementById("lblFrameIx").innerText = frameIx.toString();
+function frame(msec) {
 
   audio.tick();
+  TK.rate1 = 0.5 + audio.vol / 20;
+  TK.rate3 = 0.5 + audio.fft[3] / 20;
+  TK.rate3 = 0.5 + audio.fft[3] / 20;
+
+  const delta = msec - lastMsec;
+  TK.addMsec(delta);
+  lastMsec = msec;
+  elmFrameIx.innerText = frameIx.toString();
+
 
   if (audioReactive && audio.isBeat) {
     // model.particles.length = 0;
@@ -337,7 +344,7 @@ function frame(time) {
   updateEqualizer();
 
   if (!G) return;
-  updateModel(time);
+  updateModel();
   rebuildBodies();
   G.render();
 

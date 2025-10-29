@@ -3,8 +3,8 @@ TO-DO
 
 OK Break up buildBodies; fix reuse in particles mode
 OK geos+materials => bodies
--- Mulitiple times
--- Remove cycles; time-based animations
+OK Multiple, reactive times
+OK Remove cycles; time-based animations
 
 
 Spookie movies

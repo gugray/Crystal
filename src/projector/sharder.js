@@ -17,8 +17,8 @@ export class Particle {
     this.update(0);
   }
 
-  update(frameIx, nLoopFrames) {
-    const cycle = this.cycleOfs + this.cyclesPerLoop * frameIx / nLoopFrames;
+  update(msec) {
+    const cycle = this.cycleOfs + this.cyclesPerLoop * msec * 0.0001;
     const animGain = Math.sin(cycle * 2 * Math.PI);
     this.pos = this.orig.clone().add(this.axis.clone().multiplyScalar(animGain));
   }
