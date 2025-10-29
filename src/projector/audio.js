@@ -73,7 +73,7 @@ export default class Audio {
     const features = this.meyda.get()
     if (!features || features === null) return;
 
-    this.vol = features.loudness.total
+    this.vol = features.loudness.total / this.scale / 8;
     this.volBuf[this.volBufPtr] = this.vol;
     this.volBufPtr = (this.volBufPtr+1) % this.volBuf.length;
     this.volSmooth = 0;

@@ -15,57 +15,12 @@ export class Particle {
     this.cycleOfs = cycleOfs;
 
     this.update(0);
-    // this.orig = pos.clone();
-    // this.velo = new Vector3();
   }
 
-  update(frameIx, nLoopFrames, volumeTester) {
-
+  update(frameIx, nLoopFrames) {
     const cycle = this.cycleOfs + this.cyclesPerLoop * frameIx / nLoopFrames;
-    const animGain = Math.sin(cycle * 2 * Math.PI)
+    const animGain = Math.sin(cycle * 2 * Math.PI);
     this.pos = this.orig.clone().add(this.axis.clone().multiplyScalar(animGain));
-
-    // const particleRandomGain = 0.0002;
-    //
-    // this.pos.add(this.velo);
-    // if (volumeTester && !volumeTester.isPointInside(this.pos.x, this.pos.y, this.pos.z)) {
-    //   this.pos.sub(this.velo);
-    //   this.velo.set(0, 0, 0);
-    // }
-    //
-    // this.velo.x += particleRandomGain * (rand() - 0.5);
-    // this.velo.y += particleRandomGain * (rand() - 0.5);
-    // this.velo.z += particleRandomGain * (rand() - 0.5);
-    // const vec = this.pos.clone().sub(this.orig);
-    // const dist = vec.length();
-    // vec.normalize();
-    // vec.multiplyScalar(Math.pow(dist, 6));
-    // this.velo.sub(vec);
-    // if (this.velo.length() > 0.0001) this.velo.multiplyScalar(0.999);
-  }
-}
-
-export function genRandomParticles(count) {
-
-  const res = []
-  let i = 0;
-  while (i < count) {
-    const x = genVal();
-    const z = genVal();
-    let y = rand();
-    y = Math.pow(y, 3);
-    if (rand() < 0.5) y *= -1;
-    y *= 0.5;
-    const pos = new Vector3(x, y, z);
-    res.push(new Particle(pos));
-    ++i;
-  }
-  return res;
-
-  function genVal() {
-    let val = rand_range(-1, 1);
-    val = Math.round(val * 100) / 100;
-    return val;
   }
 }
 
@@ -98,29 +53,24 @@ export function genRegularParticles(gap) {
 
   function makeAnimParams(xzGap) {
 
-    let tilt = rand_range(20, 70);
-    tilt = tilt / 180 * Math.PI;
-    let rot = rand_range(0, 180);
-    rot = rot / 180 * Math.PI;
-    let ampl = rand_range(0.05, xzGap * 0.9);
-    let axis = new Vector3(1, 0, 0);
-    axis.applyAxisAngle(new Vector3(0, 0, 1), tilt);
-    axis.applyAxisAngle(new Vector3(0, 1, 0), rot);
-    axis.multiplyScalar(ampl);
+    let axis;
+
+    // let tilt = rand_range(20, 70);
+    // tilt = tilt / 180 * Math.PI;
+    // let rot = rand_range(0, 180);
+    // rot = rot / 180 * Math.PI;
+    // let ampl = rand_range(0.05, xzGap * 0.9);
+    // axis = new Vector3(1, 0, 0);
+    // axis.applyAxisAngle(new Vector3(0, 0, 1), tilt);
+    // axis.applyAxisAngle(new Vector3(0, 1, 0), rot);
+    // axis.multiplyScalar(ampl);
 
     axis = new Vector3(0, 0.1, 0);
 
     let cyclesPerLoop = 1;
-    if (rand() < 0.2) cyclesPerLoop = 2;
+    if (rand() < 0.5) cyclesPerLoop = 2;
     let cycleOfs = rand();
     return [axis, cyclesPerLoop, cycleOfs];
-  }
-
-  function rndMove(part, gain) {
-    const mul = 0.2;
-    part.pos.x += mul * gain * (rand() - 0.5);
-    part.pos.y += mul * (rand() - 0.5);
-    part.pos.z += mul * (rand() - 0.5);
   }
 }
 
@@ -131,8 +81,8 @@ export class Shard {
     this.id = data.id;
     this.particle = data.particle;
     this.vertsRel = data.insetVertices;
-    this.vertsAbs = [];
     this.faceVerts = data.insetFaceVertIxs;
+    this.vertsAbs = [];
 
     // Offset shards ("heave")
     if (displacement != 0) {
@@ -147,6 +97,9 @@ export class Shard {
 
     // Calculate absolute vertex positiions
     this.vertsRel.forEach(v => this.vertsAbs.push(v.clone().add(this.particle)));
+
+    // Calculate all of this shard's surface triangles
+    this.triVerts = calcTriangles(this.faceVerts, this.vertsAbs);
   }
 
   getFacePts(faceIx) {
@@ -157,22 +110,25 @@ export class Shard {
     }
     return res;
   }
+}
 
-  appendTriangles(triVerts) {
-    for (let faceIx = 0; faceIx < this.faceVerts.length; ++faceIx) {
-      const indexes = this.faceVerts[faceIx];
-      if (indexes.length == 3) {
-        triVerts.push(this.vertsAbs[indexes[0]], this.vertsAbs[indexes[1]], this.vertsAbs[indexes[2]]);
-        continue;
-      }
-      const center = calcCenter(this.vertsAbs, indexes);
-      for (let i = 0; i < indexes.length; ++i) {
-        const j = (i+1)%indexes.length;
-        triVerts.push(center, this.vertsAbs[indexes[i]], this.vertsAbs[indexes[j]]);
-      }
+function calcTriangles(faceVerts, vertsAbs) {
+  const triVerts = [];
+  for (let faceIx = 0; faceIx < faceVerts.length; ++faceIx) {
+    const indexes = faceVerts[faceIx];
+    if (indexes.length == 3) {
+      triVerts.push(vertsAbs[indexes[0]], vertsAbs[indexes[1]], vertsAbs[indexes[2]]);
+      continue;
+    }
+    const center = calcCenter(vertsAbs, indexes);
+    for (let i = 0; i < indexes.length; ++i) {
+      const j = (i+1)%indexes.length;
+      triVerts.push(center, vertsAbs[indexes[i]], vertsAbs[indexes[j]]);
     }
   }
+  return triVerts;
 }
+
 
 function calcCenter(verts, indexes) {
   const v = verts[indexes[0]].clone();
@@ -205,7 +161,7 @@ export function genTetraWalls() {
     new WallPlane(new Vector3(wallA, wallB, 0), wallD),
     new WallPlane(new Vector3(wallA, -wallB, 0), wallD),
     new WallPlane(new Vector3(-wallA, -wallB, 0), wallD),
-    new WallPlane(new Vector3(-wallA, wallB, 0, wallD), wallD),
+    new WallPlane(new Vector3(-wallA, wallB, 0), wallD),
     new WallPlane(new Vector3(0, wallB, wallA), wallD),
     new WallPlane(new Vector3(0, -wallB, wallA), wallD),
     new WallPlane(new Vector3(0, -wallB, -wallA), wallD),

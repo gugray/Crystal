@@ -63,7 +63,7 @@ body {
 }
 
 #equalizer {
-  position: fixed; right: 10px; bottom: 10px; border: 1px solid var(--clrControl);
+  position: fixed; right: 10px; bottom: 50px; border: 1px solid var(--clrControl);
   padding: 3px; background-color: black;
   display: none; flex-direction: column; gap: 3px;
   &.visible { display: flex; }

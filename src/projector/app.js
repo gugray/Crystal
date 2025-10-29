@@ -1,14 +1,18 @@
 import * as THREE from "three";
-import { PLYExporter } from 'three/addons/exporters/PLYExporter.js';
 import {mulberry32, setRandomGenerator, rand, shuffle} from "./random.js";
 import createVoroPP from "./voropp-module.js";
 import Audio from "./audio.js";
 import {Graphics} from "./graphics.js";
 import * as Sharder from "./sharder.js";
 
-const showEqualizer = false;
+const showEqualizer = true;
 const animating = true;
 const useShadow = true;
+
+const particleGap = 0.2;
+const bgUrl = "static/berries-blur.jpg";
+const renderMode = "solids"; // particles, solids
+
 const rotSpeed = 0.0001;
 const nRotsPerLoop = 1;
 const insetHeaveSpeed = 0.0009;
@@ -17,12 +21,10 @@ const insetBy = 0.02; // 0.01
 const displaceHeaveSpeed = 0.0007;
 const nDisplaceHeavesPerLoop = 1;
 const displaceBy = 3; // 3
+
 const audioReactive = false;
 const audioBeatThreshold = 20;
 const audioDisplayFactor = 0.15;
-const particleGap = 0.2;
-const bgUrl = "static/berries-blur.jpg";
-const renderMode = "solids"; // particles, solids
 
 const nLoopFrames = 600;
 let frameIx = 0;
@@ -50,8 +52,8 @@ let audio;
 let elmCanvas, w, h;
 let elmEq;
 
-let volume = [-1, 1, -1, 1, -1, 1];
-let walls;
+const volume = [-1, 1, -1, 1, -1, 1];
+const walls = Sharder.genTetraWalls();
 let volumeTester;
 
 setTimeout(init, 50);
@@ -64,7 +66,7 @@ const model = {
 };
 
 const threeCache = {
-  rg: null,
+  rootGroup: null,
   materials: [],
   geos: [],
 }
@@ -74,7 +76,7 @@ async function init() {
   console.log(`Seed: ${seed}`);
   setRandomGenerator(mulberry32(seed));
 
-  audio = new Audio({ scale: 0.5, volSamples: 5 });
+  audio = new Audio({ scale: 0.05, volSamples: 5 });
   audio.beat.threshold = audioBeatThreshold;
   setTimeout(() => {
     elmEq.querySelector("#beat .lamp").classList.remove("on");
@@ -82,7 +84,6 @@ async function init() {
 
 
   voroMod = await createVoroPP();
-  walls = Sharder.genTetraWalls();
   volumeTester = new Sharder.VolumeTester(voroMod, volume, walls);
 
   elmEq = document.getElementById("equalizer");
@@ -102,13 +103,82 @@ async function init() {
   model.particles.push(...Sharder.genRegularParticles(particleGap));
   setParticleColors();
   console.log(`Particle count: ${model.particles.length}`);
-  initWorld();
+  initScene();
   requestAnimationFrame(frame);
 }
 
-function buildWorld() {
+function initScene() {
 
-  const rg = threeCache.rg;
+  const loader = new THREE.TextureLoader();
+  loader.load(bgUrl, tx => {
+    G.scene.background = tx;
+    G.scene.backgroundIntensity = 0.04;
+  });
+
+  threeCache.rootGroup = new THREE.Group();
+  G.scene.add(threeCache.rootGroup);
+
+  reInitGeosAndMaterials();
+
+  const shadowMapSz = 1024;
+  const shadowCamDim = 1;
+
+  function makeDirLight(x, y, z, intensity) {
+    const light = new THREE.DirectionalLight(0xffffff, intensity);
+    light.position.set(x, y, z);
+    if (useShadow) {
+      light.shadow.camera.top = shadowCamDim;
+      light.shadow.camera.left = -shadowCamDim;
+      light.shadow.camera.bottom = -shadowCamDim;
+      light.shadow.camera.right = shadowCamDim;
+      light.shadow.camera.near = 10;
+      light.shadow.camera.far = 500;
+      light.shadow.mapSize.set(shadowMapSz, shadowMapSz);
+      light.shadow.radius = 0.1;
+      light.castShadow = true;
+    }
+    return light;
+  }
+
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+  G.scene.add(ambientLight);
+
+  const dirLight1 = makeDirLight(-10, 5, 10, 3.8);
+  G.scene.add(dirLight1);
+  // G.scene.add(new THREE.CameraHelper(dirLight1.shadow.camera));
+
+  const dirLight2 = makeDirLight(0, 10, -1, 1.6);
+  G.scene.add(dirLight2);
+  // G.scene.add(new THREE.CameraHelper(dirLight2.shadow.camera));
+}
+
+function reInitGeosAndMaterials() {
+
+  threeCache.geos.forEach(geo => {
+    if (geo.geo) geo.geo.dispose()
+  });
+  threeCache.geos.length = 0;
+  threeCache.materials.forEach(mat => mat.dispose());
+  threeCache.materials.length = 0;
+
+  for (let i = 0; i < model.particles.length; ++i) {
+    const mat = new THREE.MeshLambertMaterial({
+      color: model.particles[i].color,
+      // transparent: false,
+      // opacity: 0.5,
+      // blending: THREE.AdditiveBlending,
+    });
+    threeCache.materials.push(mat);
+    threeCache.geos.push({
+      geo: null,
+      arr: null,
+    });
+  }
+}
+
+function buildBodies() {
+
+  const rg = threeCache.rootGroup;
   rg.clear();
 
   const points = [];
@@ -122,8 +192,6 @@ function buildWorld() {
     if (audioReactive) displaceVal += audioDisplayFactor * audio.volSmooth;
     const shard = new Sharder.Shard(cellData, displaceVal);
     shards.push(shard);
-    shard.triVerts = [];
-    shard.appendTriangles(shard.triVerts)
   }
 
   if (renderMode == "particles") {
@@ -170,75 +238,6 @@ function buildWorld() {
   }
 }
 
-function initWorld() {
-
-  const loader = new THREE.TextureLoader();
-  loader.load(bgUrl, tx => {
-    G.scene.background = tx;
-    G.scene.backgroundIntensity = 0.04;
-  });
-
-  threeCache.rg = new THREE.Group();
-  G.scene.add(threeCache.rg);
-
-  initGeosAndMaterials();
-
-  const shadowMapSz = 1024;
-  const shadowCamDim = 1;
-
-  function makeDirLight(x, y, z, intensity) {
-    const light = new THREE.DirectionalLight(0xffffff, intensity);
-    light.position.set(x, y, z);
-    if (useShadow) {
-      light.shadow.camera.top = shadowCamDim;
-      light.shadow.camera.left = -shadowCamDim;
-      light.shadow.camera.bottom = -shadowCamDim;
-      light.shadow.camera.right = shadowCamDim;
-      light.shadow.camera.near = 10;
-      light.shadow.camera.far = 500;
-      light.shadow.mapSize.set(shadowMapSz, shadowMapSz);
-      light.shadow.radius = 0.1;
-      light.castShadow = true;
-    }
-    return light;
-  }
-
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-  G.scene.add(ambientLight);
-
-  const dirLight1 = makeDirLight(-10, 5, 10, 3.8);
-  G.scene.add(dirLight1);
-  // G.scene.add(new THREE.CameraHelper(dirLight1.shadow.camera));
-
-  const dirLight2 = makeDirLight(0, 10, -1, 1.6);
-  G.scene.add(dirLight2);
-  // G.scene.add(new THREE.CameraHelper(dirLight2.shadow.camera));
-}
-
-function initGeosAndMaterials() {
-
-  threeCache.geos.forEach(geo => {
-    if (geo.geo) geo.geo.dispose()
-  });
-  threeCache.geos.length = 0;
-  threeCache.materials.forEach(mat => mat.dispose());
-  threeCache.materials.length = 0;
-
-  for (let i = 0; i < model.particles.length; ++i) {
-    const mat = new THREE.MeshLambertMaterial({
-      color: model.particles[i].color,
-      transparent: true,
-      opacity: 0.5,
-      blending: THREE.AdditiveBlending,
-    });
-    threeCache.materials.push(mat);
-    threeCache.geos.push({
-      geo: null,
-      arr: null,
-    });
-  }
-}
-
 function setParticleColors() {
 
   shuffle(palette);
@@ -270,7 +269,7 @@ function updateModel(time) {
   model.yRot = Math.PI * 2 * frameIx / nLoopFrames * nRotsPerLoop;
   model.insetHeave = 0.1 + 0.45 * (Math.sin(frameIx / nLoopFrames * nInsetHeavesPerLoop * 2 * Math.PI) + 1);
   model.displaceHeave = 0.1 + 0.45 * (Math.sin(frameIx / nLoopFrames * nDisplaceHeavesPerLoop * 2 * Math.PI) + 1);
-  for (const p of model.particles) p.update(frameIx, nLoopFrames, volumeTester);
+  for (const p of model.particles) p.update(frameIx, nLoopFrames);
 }
 
 function resizeCanvas() {
@@ -299,52 +298,26 @@ function updateEqualizer() {
 
 function frame(time) {
 
-  document.getElementById("lblFrameIx").innerText = frameIx;
+  document.getElementById("lblFrameIx").innerText = frameIx.toString();
 
-  // audio.tick();
+  audio.tick();
 
   if (audioReactive && audio.isBeat) {
     // model.particles.length = 0;
     // model.particles.push(...Sharder.genRegularParticles(particleGap));
-    setParticleColors();
-    initGeosAndMaterials();
+    // setParticleColors();
+    reInitGeosAndMaterials();
   }
 
   updateEqualizer();
 
   if (!G) return;
   updateModel(time);
-  threeCache.rg.rotation.set(0, model.yRot, 0);
-  buildWorld();
+  threeCache.rootGroup.rotation.set(0, model.yRot, 0);
+  buildBodies();
   G.render();
-
-  if (frameIx < nLoopFrames) void exportFrame();
 
   if (animating) requestAnimationFrame(frame);
   ++frameIx;
 }
 
-const exporter = new PLYExporter();
-
-async function exportFrame() {
-  const shards = [];
-  for (const mesh of threeCache.rg.children) {
-    const ply = exporter.parse(mesh, {});
-    const clr = mesh.material.color;
-    shards.push({
-      ply: ply,
-      color: [clr.r, clr.g, clr.b],
-    });
-  }
-  const frameData = {
-    frameIx: frameIx,
-    shards: shards,
-  };
-  await fetch('http://localhost:8090/frame', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(frameData),
-  });
-}
