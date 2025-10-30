@@ -6,13 +6,13 @@ import {TK} from "./time.js";
 import Audio from "./audio.js";
 import {Graphics} from "./graphics.js";
 import * as Sharder from "./sharder.js";
+import {elmVideo} from "./bgVideo.js";
 
 const showEqualizer = false;
 const animating = true;
 const useShadow = true;
 
 const particleGap = 0.2;
-const bgUrl = "static/berries-blur.jpg";
 const renderMode = "shards"; // boxes, shards
 
 const rotSpeed = 0.0003;
@@ -25,7 +25,6 @@ const audioReactive = false;
 const audioBeatThreshold = 20;
 const audioDisplayFactor = 0.15;
 
-const nLoopFrames = 600;
 let frameIx = 0;
 let lastMsec = 0;
 
@@ -51,8 +50,6 @@ let voroMod;
 let audio;
 let elmCanvas, w, h;
 let elmEq, elmFrameIx;
-
-let videoTexture;
 
 const volume = [-1, 1, -1, 1, -1, 1];
 const walls = Sharder.genTetraWalls();
@@ -94,7 +91,7 @@ async function init() {
 
   elmCanvas = document.getElementById("webgl-canvas");
   resizeCanvas();
-  G = new Graphics(elmCanvas, useShadow);
+  G = new Graphics(elmCanvas, "video", false, true, useShadow);
   window.addEventListener("resize", () => {
     resizeCanvas();
   });
@@ -103,8 +100,6 @@ async function init() {
     void document.documentElement.requestFullscreen();
   });
 
-  initVideo();
-
   model.particles.push(...Sharder.genRegularParticles(particleGap));
   setParticleColors();
   console.log(`Particle count: ${model.particles.length}`);
@@ -112,25 +107,7 @@ async function init() {
   requestAnimationFrame(frame);
 }
 
-function initVideo() {
-  const elmVideo = document.createElement('video');
-  elmVideo.src = "/static/swing-sin.mp4";
-  elmVideo.crossOrigin = "anonymous";
-  elmVideo.loop = true;
-  elmVideo.muted = true;
-  void elmVideo.play();
-  videoTexture = new THREE.VideoTexture(elmVideo);
-}
-
 function initScene() {
-
-  const loader = new THREE.TextureLoader();
-  // loader.load(bgUrl, tx => {
-  //   G.scene.background = tx;
-  //   G.scene.backgroundIntensity = 0.04; // 0.04
-  // });
-
-  G.scene.background = videoTexture;
 
   threeCache.rootGroup = new THREE.Group();
   G.scene.add(threeCache.rootGroup);
