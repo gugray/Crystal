@@ -8,6 +8,7 @@ import {vignetteShader} from "./vignette-shader.js";
 import {ditherShader} from "./dither-shader.js";
 import {initBgVideo, renderVideoToTx, updateBgVideoSize, videoTexture} from "./bgVideo.js";
 
+const initVideo = false;
 const blurredBerriesUrl = "static/berries-blur.jpg";
 let bgTxBlurredBerries;
 
@@ -44,11 +45,11 @@ export class Graphics {
       alpha: true,
     });
     this.renderer.shadowMap.enabled = this.useShadow;
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    // this.renderer.setPixelRatio(window.devicePixelRatio);
 
     this.rebuildComposer();
 
-    initBgVideo(elmCanvas, "/static/swing-sin.mp4");
+    if (initVideo) initBgVideo(elmCanvas, "/static/swing-sin.mp4");
   }
 
   rebuildComposer() {
@@ -62,8 +63,8 @@ export class Graphics {
     if (this.vignette) {
       this.vignettePass = new ShaderPass(vignetteShader);
       this.vignettePass.uniforms["resolution"].value = new THREE.Vector2(
-        this.elmCanvas.clientWidth * window.devicePixelRatio,
-        this.elmCanvas.clientHeight * window.devicePixelRatio);
+        this.elmCanvas.clientWidth,
+        this.elmCanvas.clientHeight);
       this.vignettePass.uniforms["radius"].value = 1.4;
       this.vignettePass.uniforms["softness"].value = 0.5;
       this.vignettePass.uniforms["gain"].value = 0.95;
@@ -96,8 +97,15 @@ export class Graphics {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     if (this.vignettePass)
-      this.vignettePass.uniforms[ "resolution" ].value = new THREE.Vector2(w, h);
-    updateBgVideoSize();
+      this.vignettePass.uniforms["resolution"].value = new THREE.Vector2(w, h);
+
+    if (initVideo) updateBgVideoSize();
+  }
+
+  getResolution(vec) {
+    const w = this.elmCanvas.clientWidth;
+    const h = this.elmCanvas.clientHeight
+    vec.set(w, h);
   }
 
   render() {

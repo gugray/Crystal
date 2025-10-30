@@ -97,6 +97,24 @@ export class Shard {
     // Calculate all of this shard's surface triangles
     this.triVerts = calcTriangles(this.faceVerts, this.vertsRel);
   }
+
+  makeWFLines(arr) {
+    let nLines = 0;
+    for (const fv of this.faceVerts) nLines += fv.length;
+    const arrSz = nLines * 2 * 3;
+    if (!arr || arr.length != arrSz) arr = new Float32Array(arrSz);
+    let ix = 0;
+    for (const indexes of this.faceVerts) {
+      for (let i = 0; i < indexes.length; ++i) {
+        const j = (i+1)%indexes.length;
+        const v1 = this.vertsRel[indexes[i]];
+        const v2 = this.vertsRel[indexes[j]];
+        arr[ix++] = v1.x; arr[ix++] = v1.y; arr[ix++] = v1.z;
+        arr[ix++] = v2.x; arr[ix++] = v2.y; arr[ix++] = v2.z;
+      }
+    }
+    return arr;
+  }
 }
 
 function calcTriangles(faceVerts, verts) {

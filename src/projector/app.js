@@ -1,5 +1,9 @@
 import * as THREE from "three";
 import {Vector3} from "three";
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+
 import {mulberry32, setRandomGenerator, rand, shuffle} from "./random.js";
 import createVoroPP from "./voropp-module.js";
 import {TK} from "./time.js";
@@ -13,7 +17,7 @@ const animating = true;
 const useShadow = true;
 
 const particleGap = 0.2;
-const renderMode = "shards"; // boxes, shards
+const renderMode = "shards-wf"; // boxes, shards, shards-wf
 
 const rotSpeed = 0.0003;
 const insetHeaveSpeed = 0.0009;
@@ -40,7 +44,7 @@ const palette = [
 ];
 
 let seed = Math.round(Math.random() * 65535);
-// seed = 48923;
+seed = 0;
 
 /**
  * @type {Graphics}
@@ -91,7 +95,7 @@ async function init() {
 
   elmCanvas = document.getElementById("webgl-canvas");
   resizeCanvas();
-  G = new Graphics(elmCanvas, "video", false, true, useShadow);
+  G = new Graphics(elmCanvas, "blurred-berries", true, false, useShadow);
   window.addEventListener("resize", () => {
     resizeCanvas();
   });
@@ -158,7 +162,7 @@ function reInitGeosAndMaterials() {
   for (let i = 0; i < model.particles.length; ++i) {
     const mat = new THREE.MeshLambertMaterial({
       color: model.particles[i].color,
-      // transparent: false,
+      transparent: false,
       // opacity: 0.5,
       // blending: THREE.AdditiveBlending,
     });
@@ -191,6 +195,8 @@ function rebuildBodies() {
     rebuildParticleBoxes(threeCache.rootGroup, shards)
   else if (renderMode == "shards")
     rebuildShardBodies(threeCache.rootGroup, shards)
+  else if (renderMode == "shards-wf")
+    rebuildShardWFBodies(threeCache.rootGroup, shards)
 }
 
 function rebuildParticleBoxes(group, shards) {
@@ -212,7 +218,6 @@ function rebuildParticleBoxes(group, shards) {
     if (useShadow) {
       mesh.castShadow = mesh.receiveShadow = true;
     }
-    body.mesh = mesh;
     group.add(mesh);
   }
 }
@@ -227,7 +232,9 @@ function rebuildShardBodies(group, shards) {
     const shard = shards[i];
     const body = threeCache.bodies[shard.id];
 
-    if (!body.geo || body.geo.getAttribute("position").count != shard.triVerts.length) {
+    const recreateGeo = !body.geo || body.geo.type != "BufferGeometry" ||
+      body.geo.getAttribute("position").count != shard.triVerts.length;
+    if (recreateGeo) {
       if (body.geo) body.geo.dispose();
       body.geo = new THREE.BufferGeometry();
     }
@@ -247,11 +254,55 @@ function rebuildShardBodies(group, shards) {
     }
     body.geo.setAttribute("position", new THREE.BufferAttribute(body.arr, 3));
     body.geo.computeVertexNormals();
+
     const mesh = new THREE.Mesh(body.geo, body.mat);
-    if (useShadow) {
-      mesh.castShadow = mesh.receiveShadow = true;
+    if (useShadow) mesh.castShadow = mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+}
+
+function rebuildShardWFBodies(group, shards) {
+  const vec = new Vector3();
+  const res = new Vector3();
+  const yAxis = new THREE.Vector3(0, 1, 0);
+
+  G.getResolution(res);
+
+  // Add shards
+  for (let i = 0; i < shards.length; ++i) {
+
+    const shard = shards[i];
+    const body = threeCache.bodies[shard.id];
+
+    const oldArr = body.arr;
+    body.arr = shard.makeWFLines(body.arr);
+
+    // Mirror Z, offset, and rotate
+    for (let i = 0; i < body.arr.length / 3; ++i) {
+      vec.set(body.arr[3*i], body.arr[3*i+1], body.arr[3*i+2]);
+      vec.add(shard.offset);
+      vec.z = -vec.z;
+      vec.applyAxisAngle(yAxis, model.yRot);
+      body.arr[3*i] = vec.x;
+      body.arr[3*i+1] = vec.y;
+      body.arr[3*i+2] = vec.z;
     }
-    body.mesh = mesh;
+
+    let recreateGeo = oldArr == null || oldArr.length != body.arr.length;
+    recreateGeo |= !body.geo || body.geo.type != "LineSegmentsGeometry";
+    if (recreateGeo) {
+      if (body.geo) body.geo.dispose();
+      body.geo = new LineSegmentsGeometry();
+    }
+    body.geo.setPositions(body.arr);
+
+    const material = new LineMaterial({
+      color: body.mat.color,
+      linewidth: 3,
+      resolution: res,
+    });
+    const mesh = new Line2(body.geo, material);
+
     group.add(mesh);
   }
 }
@@ -264,19 +315,6 @@ function setParticleColors() {
     const p = model.particles[i];
     const colorHSLStr = palette[i%palette.length];
     p.color = new THREE.Color(colorHSLStr);
-  }
-
-  function hashToRandom(input) {
-    // Ensure the input is a positive integer
-    input = Math.floor(input);
-
-    // Bitwise manipulation for hashing
-    input = ((input >> 16) ^ input) * 0x45d9f3b;
-    input = ((input >> 16) ^ input) * 0x45d9f3b;
-    input = (input >> 16) ^ input;
-
-    // Normalize the result to a number between 0 and 1
-    return (input >>> 0) / 0xFFFFFFFF;
   }
 }
 
@@ -294,8 +332,8 @@ function resizeCanvas() {
   let elmHeight = window.innerHeight;
   elmCanvas.style.width = elmWidth + "px";
   elmCanvas.style.height = elmHeight + "px";
-  w = elmCanvas.width = Math.round(elmWidth * devicePixelRatio);
-  h = elmCanvas.height = Math.round(elmHeight * devicePixelRatio);
+  w = elmCanvas.width = Math.round(elmWidth);
+  h = elmCanvas.height = Math.round(elmHeight);
   if (G) G.updateSize();
 }
 
