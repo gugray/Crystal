@@ -10,6 +10,8 @@ OK video background
 OK shards wireframe
 OK full hedron: solid, WF
 OK live control mechanism
+OK basic context / commands
+-- easing control values
 -- regular particles
 
 

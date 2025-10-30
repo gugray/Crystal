@@ -6,7 +6,7 @@ import {OutputPass} from "three/addons/postprocessing/OutputPass.js";
 import {ShaderPass} from "three/addons/postprocessing/ShaderPass.js";
 import {vignetteShader} from "./vignette-shader.js";
 import {ditherShader} from "./dither-shader.js";
-import {initBgVideo, renderVideoToTx, updateBgVideoSize, videoTexture} from "./bgVideo.js";
+import {elmVideo, initBgVideo, renderVideoToTx, updateBgVideoSize, videoTexture} from "./bgVideo.js";
 
 const initVideo = false;
 const blurredBerriesUrl = "static/berries-blur.jpg";
@@ -87,6 +87,11 @@ export class Graphics {
     this.useShadow = useShadow;
     this.rebuildComposer();
     this.renderer.shadowMap.enabled = this.useShadow;
+
+    if (this.background == "video" && !elmVideo) {
+      initBgVideo(this.elmCanvas, "/static/swing-sin.mp4");
+      updateBgVideoSize();
+    }
   }
 
   updateSize() {
@@ -99,7 +104,7 @@ export class Graphics {
     if (this.vignettePass)
       this.vignettePass.uniforms["resolution"].value = new THREE.Vector2(w, h);
 
-    if (initVideo) updateBgVideoSize();
+    if (elmVideo) updateBgVideoSize();
   }
 
   getResolution(vec) {
@@ -110,8 +115,9 @@ export class Graphics {
 
   render() {
 
-    if (this.background == "video") {
+    if (this.background == "video" && elmVideo) {
       this.scene.background = renderVideoToTx(this.renderer);
+      this.scene.backgroundIntensity = 1;
     }
     else if (this.background == "blurred-berries") {
       this.scene.background = bgTxBlurredBerries;

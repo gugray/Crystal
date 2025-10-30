@@ -14,12 +14,12 @@ import {elmVideo} from "./bgVideo.js";
 import {initReceiver} from "./receiver.js";
 
 const showEqualizer = false;
-const animating = false;
-const useShadow = true;
+let animating = true;
+let useShadow = true;
 
 const particleGap = 0.2;
 const wfLineWidth = 3;
-const renderMode = "shards"; // boxes, shards, shards-wf, hedron, hedron-wf
+let renderMode = "shards"; // boxes, shards, shards-wf, hedron, hedron-wf
 
 const yRotSpeed = 0.0003;
 const xRotSpeed = 0;
@@ -505,8 +505,8 @@ function frame(msec) {
   TK.rate3 = 0.5 + audio.fft[3] / 20;
 
   const delta = msec - lastMsec;
-  TK.addMsec(delta);
-  lastMsec = msec;
+  if (lastMsec != -1) TK.addMsec(delta);
+  if (animating) lastMsec = msec;
   elmFrameIx.innerText = frameIx.toString();
 
 
@@ -530,9 +530,20 @@ function frame(msec) {
 }
 
 const commandContext = {
-  boop: function() {
-    console.log("boopity boop");
+  animating: function(val) {
+    if (animating == val) return;
+    animating = val;
+    if (!animating) lastMsec = -1;
+    if (animating) requestAnimationFrame(frame);
   },
+  graphicsConfig: function(background, vignette, dither, useShadow) {
+    G.config(background, vignette, dither, useShadow);
+  },
+  renderMode: function(mode) {
+    if (renderMode == mode) return;
+    renderMode = mode;
+    clearGeosAndMaterials();
+  }
 };
 
 function runCommand(cmd) {
