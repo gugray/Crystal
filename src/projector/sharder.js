@@ -5,6 +5,17 @@ const wallA = 1;
 const wallB = 0.4;
 const wallD = 0.4;
 
+export const hedronCorners = [
+  new Vector3(-0.4, 0, 0.4),
+  new Vector3(0.4, 0, 0.4),
+  new Vector3(0.4, 0, -0.4),
+  new Vector3(-0.4, 0, -0.4),
+];
+export const hedronTips = [
+  new Vector3(0, 1, 0),
+  new Vector3(0, -1, 0),
+];
+
 export class Particle {
 
   constructor(pos, axis, cyclesPerLoop, cycleOfs) {
@@ -173,6 +184,14 @@ export function genTetraWalls() {
     new WallPlane(new Vector3(0, wallB, -wallA), wallD),
   ];
 }
+
+// export function genHedron(mod, volume, wallPlanes) {
+//   const points = [new Vector3(0, 0, 0)];
+//   const voro = genVoro(mod, volume, wallPlanes, points, 0);
+//
+//   const shard = new Shard(voro[0], 0);
+//   console.log(shard);
+// }
 
 export function genVoro(mod, volume, wallPlanes, particles, insetBy) {
 

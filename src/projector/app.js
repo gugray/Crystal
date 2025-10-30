@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import {Vector3} from "three";
-import { Line2 } from 'three/examples/jsm/lines/Line2.js';
-import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
-import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import {Line2} from 'three/examples/jsm/lines/Line2.js';
+import {LineMaterial} from 'three/examples/jsm/lines/LineMaterial.js';
+import {LineSegmentsGeometry} from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 
 import {mulberry32, setRandomGenerator, rand, shuffle} from "./random.js";
 import createVoroPP from "./voropp-module.js";
@@ -13,13 +13,15 @@ import * as Sharder from "./sharder.js";
 import {elmVideo} from "./bgVideo.js";
 
 const showEqualizer = false;
-const animating = true;
+const animating = false;
 const useShadow = true;
 
 const particleGap = 0.2;
-const renderMode = "shards-wf"; // boxes, shards, shards-wf
+const wfLineWidth = 3;
+const renderMode = "shards"; // boxes, shards, shards-wf, hedron, hedron-wf
 
-const rotSpeed = 0.0003;
+const yRotSpeed = 0.0003;
+const xRotSpeed = 0;
 const insetHeaveSpeed = 0.0009;
 const insetBy = 0.02; // 0.01
 const displaceHeaveSpeed = 0.0007;
@@ -57,13 +59,15 @@ let elmEq, elmFrameIx;
 
 const volume = [-1, 1, -1, 1, -1, 1];
 const walls = Sharder.genTetraWalls();
-let volumeTester;
+const xAxis = new THREE.Vector3(1, 0, 0);
+const yAxis = new THREE.Vector3(0, 1, 0);
 
 setTimeout(init, 50);
 
 const model = {
   particles: [],
   yRot: 0,
+  xRot: 0,
   insetHeave: 1,
   displaceHeave: 0,
 };
@@ -72,6 +76,8 @@ const threeCache = {
   rootGroup: null,
   // For each shard: material, geometry, position array (for use if geo is buffer)
   bodies: [],
+  // Hedron body
+  hbody: {},
 }
 
 async function init() {
@@ -79,15 +85,13 @@ async function init() {
   console.log(`Seed: ${seed}`);
   setRandomGenerator(mulberry32(seed));
 
+  voroMod = await createVoroPP();
+
   audio = new Audio({ scale: 0.05, volSamples: 5 });
   audio.beat.threshold = audioBeatThreshold;
   setTimeout(() => {
     elmEq.querySelector("#beat .lamp").classList.remove("on");
   }, 1000);
-
-
-  voroMod = await createVoroPP();
-  volumeTester = new Sharder.VolumeTester(voroMod, volume, walls);
 
   elmEq = document.getElementById("equalizer");
   if (showEqualizer) elmEq.classList.add("visible");
@@ -116,7 +120,7 @@ function initScene() {
   threeCache.rootGroup = new THREE.Group();
   G.scene.add(threeCache.rootGroup);
 
-  reInitGeosAndMaterials();
+  clearGeosAndMaterials();
 
   const shadowMapSz = 1024;
   const shadowCamDim = 1;
@@ -150,28 +154,45 @@ function initScene() {
   // G.scene.add(new THREE.CameraHelper(dirLight2.shadow.camera));
 }
 
-function reInitGeosAndMaterials() {
+function clearGeosAndMaterials() {
 
   threeCache.bodies.forEach(body => {
     if (body.geo) body.geo.dispose();
     if (body.mat) body.mat.dispose();
   });
-
   threeCache.bodies.length = 0;
-
   for (let i = 0; i < model.particles.length; ++i) {
-    const mat = new THREE.MeshLambertMaterial({
-      color: model.particles[i].color,
-      transparent: false,
-      // opacity: 0.5,
-      // blending: THREE.AdditiveBlending,
-    });
     threeCache.bodies.push({
-      mat: mat,
+      mat: null,
       geo: null,
       arr: null,
     });
   }
+
+  if (threeCache.hbody.geo) threeCache.hbody.geo.dispose();
+  if (threeCache.hbody.mat) threeCache.hbody.mat.dispose();
+  threeCache.hbody = {
+    mat: null,
+    geo: null,
+    arr: null,
+  };
+}
+
+function makeSolidMaterial(color) {
+  const mat = new THREE.MeshLambertMaterial({
+    color: color,
+    transparent: false,
+    // opacity: 0.5,
+    // blending: THREE.AdditiveBlending,
+  });
+  return mat;
+}
+
+function makeWFMaterial(color) {
+  return new LineMaterial({
+    color: color,
+    linewidth: wfLineWidth,
+  });
 }
 
 function rebuildBodies() {
@@ -197,10 +218,13 @@ function rebuildBodies() {
     rebuildShardBodies(threeCache.rootGroup, shards)
   else if (renderMode == "shards-wf")
     rebuildShardWFBodies(threeCache.rootGroup, shards)
+  else if (renderMode == "hedron")
+    rebuildHedronSolid(threeCache.rootGroup);
+  else if (renderMode == "hedron-wf")
+    rebuildHedronWF(threeCache.rootGroup);
 }
 
 function rebuildParticleBoxes(group, shards) {
-  const yAxis = new THREE.Vector3(0, 1, 0);
 
   for (let i = 0; i < shards.length; ++i) {
 
@@ -212,9 +236,13 @@ function rebuildParticleBoxes(group, shards) {
       body.geo = new THREE.BoxGeometry(sz, sz, sz, 1, 1, 1);
     }
 
+    if (!body.mat || body.mat.type != "MeshLambertMaterial")
+      body.mat = makeSolidMaterial(model.particles[shard.id].color);
+
     const mesh = new THREE.Mesh(body.geo, body.mat);
     mesh.position.set(shard.offset.x, shard.offset.y, -shard.offset.z);
     mesh.position.applyAxisAngle(yAxis, model.yRot);
+    mesh.position.applyAxisAngle(xAxis, model.xRot);
     if (useShadow) {
       mesh.castShadow = mesh.receiveShadow = true;
     }
@@ -222,9 +250,30 @@ function rebuildParticleBoxes(group, shards) {
   }
 }
 
+function offsetShardVertexes(arr, offset, vec) {
+  for (let i = 0; i < arr.length / 3; ++i) {
+    vec.set(arr[3 * i], arr[3 * i + 1], arr[3 * i + 2]);
+    vec.add(offset);
+    arr[3*i] = vec.x;
+    arr[3*i+1] = vec.y;
+    arr[3*i+2] = vec.z;
+  }
+}
+
+function rotateObject(arr, vec) {
+  for (let i = 0; i < arr.length / 3; ++i) {
+    vec.set(arr[3 * i], arr[3 * i + 1], arr[3 * i + 2]);
+    vec.z = -vec.z;
+    vec.applyAxisAngle(yAxis, model.yRot);
+    vec.applyAxisAngle(xAxis, model.xRot);
+    arr[3 * i] = vec.x;
+    arr[3 * i + 1] = vec.y;
+    arr[3 * i + 2] = vec.z;
+  }
+}
+
 function rebuildShardBodies(group, shards) {
   const vec = new Vector3();
-  const yAxis = new THREE.Vector3(0, 1, 0);
 
   // Add shards
   for (let i = 0; i < shards.length; ++i) {
@@ -243,17 +292,18 @@ function rebuildShardBodies(group, shards) {
     if (!body.arr || body.arr.length != arrSz)
       body.arr = new Float32Array(arrSz);
 
-    for (let j = 0; j < shard.triVerts.length; ++j) {
-      vec.copy(shard.triVerts[j]);
-      vec.add(shard.offset);
-      vec.z = -vec.z;
-      vec.applyAxisAngle(yAxis, model.yRot);
-      body.arr[3 * j] = vec.x;
-      body.arr[3 * j + 1] = vec.y;
-      body.arr[3 * j + 2] = vec.z;
+    for (let j = 0, ix = 0; j < shard.triVerts.length; ++j) {
+      const v = shard.triVerts[j];
+      body.arr[ix++] = v.x; body.arr[ix++] = v.y; body.arr[ix++] = v.z;
     }
+    offsetShardVertexes(body.arr, shard.offset, vec);
+    rotateObject(body.arr, vec);
+
     body.geo.setAttribute("position", new THREE.BufferAttribute(body.arr, 3));
     body.geo.computeVertexNormals();
+
+    if (!body.mat || body.mat.type != "MeshLambertMaterial")
+      body.mat = makeSolidMaterial(model.particles[shard.id].color);
 
     const mesh = new THREE.Mesh(body.geo, body.mat);
     if (useShadow) mesh.castShadow = mesh.receiveShadow = true;
@@ -264,8 +314,6 @@ function rebuildShardBodies(group, shards) {
 function rebuildShardWFBodies(group, shards) {
   const vec = new Vector3();
   const res = new Vector3();
-  const yAxis = new THREE.Vector3(0, 1, 0);
-
   G.getResolution(res);
 
   // Add shards
@@ -277,16 +325,11 @@ function rebuildShardWFBodies(group, shards) {
     const oldArr = body.arr;
     body.arr = shard.makeWFLines(body.arr);
 
-    // Mirror Z, offset, and rotate
-    for (let i = 0; i < body.arr.length / 3; ++i) {
-      vec.set(body.arr[3*i], body.arr[3*i+1], body.arr[3*i+2]);
-      vec.add(shard.offset);
-      vec.z = -vec.z;
-      vec.applyAxisAngle(yAxis, model.yRot);
-      body.arr[3*i] = vec.x;
-      body.arr[3*i+1] = vec.y;
-      body.arr[3*i+2] = vec.z;
-    }
+    // Offset
+    offsetShardVertexes(body.arr, shard.offset, vec);
+
+    // Rotate & invert Z
+    rotateObject(body.arr, vec);
 
     let recreateGeo = oldArr == null || oldArr.length != body.arr.length;
     recreateGeo |= !body.geo || body.geo.type != "LineSegmentsGeometry";
@@ -296,15 +339,117 @@ function rebuildShardWFBodies(group, shards) {
     }
     body.geo.setPositions(body.arr);
 
-    const material = new LineMaterial({
-      color: body.mat.color,
-      linewidth: 3,
-      resolution: res,
-    });
-    const mesh = new Line2(body.geo, material);
+    if (!body.mat || body.mat.type != "")
+      body.mat = makeWFMaterial(model.particles[shard.id].color);
+    body.mat.color = model.particles[shard.id].color;
+    body.mat.res = res;
+
+    const mesh = new Line2(body.geo, body.mat);
 
     group.add(mesh);
   }
+}
+
+function rebuildHedronWF(group) {
+  const vec = new Vector3();
+  const res = new Vector3();
+  G.getResolution(res);
+
+  // Only one body
+  const body = threeCache.hbody;
+
+  // Add along middle corners
+  const arrSz = 12 * 2 * 3;
+  const oldArr = body.arr;
+  if (!body.arr || body.arr.length != arrSz) body.arr = new Float32Array(arrSz);
+  let ix = 0;
+  for (let i = 0; i < 4; ++i) {
+    const j = (i+1)%4;
+    const v1 = Sharder.hedronCorners[i];
+    const v2 = Sharder.hedronCorners[j];
+    body.arr[ix++] = v1.x; body.arr[ix++] = v1.y; body.arr[ix++] = v1.z;
+    body.arr[ix++] = v2.x; body.arr[ix++] = v2.y; body.arr[ix++] = v2.z;
+    const t1 = Sharder.hedronTips[0];
+    body.arr[ix++] = v1.x; body.arr[ix++] = v1.y; body.arr[ix++] = v1.z;
+    body.arr[ix++] = t1.x; body.arr[ix++] = t1.y; body.arr[ix++] = t1.z;
+    const t2 = Sharder.hedronTips[1];
+    body.arr[ix++] = v1.x; body.arr[ix++] = v1.y; body.arr[ix++] = v1.z;
+    body.arr[ix++] = t2.x; body.arr[ix++] = t2.y; body.arr[ix++] = t2.z;
+  }
+
+  // Rotate, invert z
+  rotateObject(body.arr, vec);
+
+  let recreateGeo = oldArr == null || oldArr.length != body.arr.length;
+  recreateGeo |= !body.geo || body.geo.type != "LineSegmentsGeometry";
+  if (recreateGeo) {
+    if (body.geo) body.geo.dispose();
+    body.geo = new LineSegmentsGeometry();
+  }
+  body.geo.setPositions(body.arr);
+
+
+  if (!body.mat || body.mat.type != "")
+    body.mat = makeWFMaterial(model.particles[1].color);
+  body.mat.color = model.particles[1].color;
+  body.mat.res = res;
+  // Update color here if u want
+
+  const mesh = new Line2(body.geo, body.mat);
+  group.add(mesh);
+}
+
+function rebuildHedronSolid(group) {
+  const vec = new Vector3();
+
+  // Only one body
+  const body = threeCache.hbody;
+
+  // Four top and bottom triangles
+  const arrSz = 8 * 3 * 3;
+  if (!body.arr || body.arr.length != arrSz) body.arr = new Float32Array(arrSz);
+  let ix = 0;
+  for (let i = 0; i < 4; ++i) {
+    const j = (i+1)%4;
+    const v1 = Sharder.hedronCorners[i];
+    const v2 = Sharder.hedronCorners[j];
+    const t1 = Sharder.hedronTips[0];
+    const t2 = Sharder.hedronTips[1];
+    body.arr[ix++] = v2.x; body.arr[ix++] = v2.y; body.arr[ix++] = v2.z;
+    body.arr[ix++] = v1.x; body.arr[ix++] = v1.y; body.arr[ix++] = v1.z;
+    body.arr[ix++] = t1.x; body.arr[ix++] = t1.y; body.arr[ix++] = t1.z;
+    body.arr[ix++] = t2.x; body.arr[ix++] = t2.y; body.arr[ix++] = t2.z;
+    body.arr[ix++] = v1.x; body.arr[ix++] = v1.y; body.arr[ix++] = v1.z;
+    body.arr[ix++] = v2.x; body.arr[ix++] = v2.y; body.arr[ix++] = v2.z;
+  }
+  // Rotate, invert z
+  for (let i = 0; i < body.arr.length / 3; ++i) {
+    vec.set(body.arr[3*i], body.arr[3*i+1], body.arr[3*i+2]);
+    vec.z = -vec.z;
+    vec.applyAxisAngle(yAxis, model.yRot);
+    vec.applyAxisAngle(xAxis, model.xRot);
+    body.arr[3*i] = vec.x;
+    body.arr[3*i+1] = vec.y;
+    body.arr[3*i+2] = vec.z;
+  }
+
+  const recreateGeo = !body.geo || body.geo.type != "BufferGeometry" ||
+    body.geo.getAttribute("position").count != arrSz / 3;
+  if (recreateGeo) {
+    if (body.geo) body.geo.dispose();
+    body.geo = new THREE.BufferGeometry();
+  }
+  body.geo.setAttribute("position", new THREE.BufferAttribute(body.arr, 3));
+  body.geo.computeVertexNormals();
+
+  if (!body.mat || body.mat.type != "MeshLambertMaterial")
+    body.mat = makeSolidMaterial(model.particles[1].color);
+  body.mat.color = model.particles[1].color;
+  // Set color if you want
+
+  const mesh = new THREE.Mesh(body.geo, body.mat);
+  if (useShadow) mesh.castShadow = mesh.receiveShadow = true;
+  group.add(mesh);
 }
 
 function setParticleColors() {
@@ -319,7 +464,8 @@ function setParticleColors() {
 }
 
 function updateModel() {
-  model.yRot = TK.stable * rotSpeed;
+  model.yRot = TK.stable * yRotSpeed;
+  model.xRot = TK.stable * xRotSpeed;
   model.insetHeave = 0.1 + 0.45 * (Math.sin(TK.stable * insetHeaveSpeed) + 1);
   model.displaceHeave = 0.1 + 0.45 * (Math.sin(TK.stable * displaceHeaveSpeed) + 1);
   for (const p of model.particles) p.update(TK.stable);
@@ -366,7 +512,7 @@ function frame(msec) {
     // model.particles.length = 0;
     // model.particles.push(...Sharder.genRegularParticles(particleGap));
     // setParticleColors();
-    reInitGeosAndMaterials();
+    clearGeosAndMaterials();
   }
 
   updateEqualizer();

@@ -7,19 +7,18 @@ OK Multiple, reactive times
 OK Remove cycles; time-based animations
 OK dithering shader
 OK video background
--- wireframe
+OK shards wireframe
+OK full hedron: solid, WF
+-- live control mechanism
+-- regular particles
 
-Spookie movies
-===================
 
-Buster Keaton: The Haunted House
-https://youtu.be/cKOoOK09HvQ?si=o0IVlgZ5LxraLs0J&t=905
+Reactivity:
+-- hide/show elements (on beat) -> edges, shards
+-- cut to objects (eg when showing shards on their own)
+-- separately scale shards (abs level)
+-- displace on peaks, fall back to center (on beat)
+-- shake l/r
+-- jump away from screen (when 2 hedrons watching movie)
+-- BG movie intensity / color
 
-15:05 -> 15:27
-16:30 -> 16:09
-
-Flip the Frog
-https://www.youtube.com/watch?v=v9dDmmBk6po
-
-Swing You Sinners
-https://www.youtube.com/watch?v=vH1aOMuNFvI
