@@ -1,8 +1,10 @@
 import * as esbuild from "esbuild"
 import glsl from "./glsl-plugin.js"
-import { livereloadPlugin } from "@jgoz/esbuild-plugin-livereload"
+import {livereloadPlugin} from "@jgoz/esbuild-plugin-livereload"
+import {runRelay} from "./src/relay/server.js"
 
 const projectorPort = 8081;
+const relayPort = 8082;
 
 const args = (argList => {
   let res = {};
@@ -63,4 +65,5 @@ async function runProjector() {
 }
 
 void runProjector();
+void runRelay(relayPort);
 

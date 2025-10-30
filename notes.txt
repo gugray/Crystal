@@ -9,7 +9,7 @@ OK dithering shader
 OK video background
 OK shards wireframe
 OK full hedron: solid, WF
--- live control mechanism
+OK live control mechanism
 -- regular particles
 
 

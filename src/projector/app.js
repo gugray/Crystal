@@ -11,6 +11,7 @@ import Audio from "./audio.js";
 import {Graphics} from "./graphics.js";
 import * as Sharder from "./sharder.js";
 import {elmVideo} from "./bgVideo.js";
+import {initReceiver} from "./receiver.js";
 
 const showEqualizer = false;
 const animating = false;
@@ -86,6 +87,7 @@ async function init() {
   setRandomGenerator(mulberry32(seed));
 
   voroMod = await createVoroPP();
+  initReceiver(runCommand);
 
   audio = new Audio({ scale: 0.05, volSamples: 5 });
   audio.beat.threshold = audioBeatThreshold;
@@ -527,3 +529,13 @@ function frame(msec) {
   ++frameIx;
 }
 
+const commandContext = {
+  boop: function() {
+    console.log("boopity boop");
+  },
+};
+
+function runCommand(cmd) {
+  const evalCommand = new Function('ctxt', `with(ctxt) { ${cmd}; }`);
+  evalCommand(commandContext);
+}
