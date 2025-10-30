@@ -12,6 +12,7 @@ import {Graphics} from "./graphics.js";
 import * as Sharder from "./sharder.js";
 import {elmVideo} from "./bgVideo.js";
 import {initReceiver} from "./receiver.js";
+import {createParam, updateParams} from "./smoothParams.js";
 
 const showEqualizer = false;
 let animating = true;
@@ -21,8 +22,9 @@ const particleGap = 0.2;
 const wfLineWidth = 3;
 let renderMode = "shards"; // boxes, shards, shards-wf, hedron, hedron-wf
 
-const yRotSpeed = 0.0003;
-const xRotSpeed = 0;
+const scaleFactor = createParam(1);
+const yRotSpeed = createParam(0.0003);
+const xRotSpeed = createParam(0);
 const insetHeaveSpeed = 0.0009;
 const insetBy = 0.02; // 0.01
 const displaceHeaveSpeed = 0.0007;
@@ -274,6 +276,16 @@ function rotateObject(arr, vec) {
   }
 }
 
+function scaleObject(arr, vec, scale) {
+  for (let i = 0; i < arr.length / 3; ++i) {
+    vec.set(arr[3 * i], arr[3 * i + 1], arr[3 * i + 2]);
+    vec.multiplyScalar(scale);
+    arr[3 * i] = vec.x;
+    arr[3 * i + 1] = vec.y;
+    arr[3 * i + 2] = vec.z;
+  }
+}
+
 function rebuildShardBodies(group, shards) {
   const vec = new Vector3();
 
@@ -299,6 +311,7 @@ function rebuildShardBodies(group, shards) {
       body.arr[ix++] = v.x; body.arr[ix++] = v.y; body.arr[ix++] = v.z;
     }
     offsetShardVertexes(body.arr, shard.offset, vec);
+    scaleObject(body.arr, vec, scaleFactor.get());
     rotateObject(body.arr, vec);
 
     body.geo.setAttribute("position", new THREE.BufferAttribute(body.arr, 3));
@@ -465,9 +478,9 @@ function setParticleColors() {
   }
 }
 
-function updateModel() {
-  model.yRot = TK.stable * yRotSpeed;
-  model.xRot = TK.stable * xRotSpeed;
+function updateModel(elapsedMsec) {
+  model.yRot += elapsedMsec * yRotSpeed.get();
+  model.xRot += elapsedMsec * xRotSpeed.get();
   model.insetHeave = 0.1 + 0.45 * (Math.sin(TK.stable * insetHeaveSpeed) + 1);
   model.displaceHeave = 0.1 + 0.45 * (Math.sin(TK.stable * displaceHeaveSpeed) + 1);
   for (const p of model.particles) p.update(TK.stable);
@@ -504,8 +517,12 @@ function frame(msec) {
   TK.rate3 = 0.5 + audio.fft[3] / 20;
   TK.rate3 = 0.5 + audio.fft[3] / 20;
 
-  const delta = msec - lastMsec;
-  if (lastMsec != -1) TK.addMsec(delta);
+  let delta = msec - lastMsec;
+  if (lastMsec != -1) {
+    TK.addMsec(delta);
+    updateParams(delta);
+    updateModel(delta);
+  }
   if (animating) lastMsec = msec;
   elmFrameIx.innerText = frameIx.toString();
 
@@ -520,7 +537,6 @@ function frame(msec) {
   updateEqualizer();
 
   if (!G) return;
-  updateModel();
   rebuildBodies();
 
   G.render();
@@ -530,6 +546,11 @@ function frame(msec) {
 }
 
 const commandContext = {
+  params: {
+    scaleFactor: scaleFactor,
+    yRotSpeed: yRotSpeed,
+    xRotSpeed: xRotSpeed,
+  },
   animating: function(val) {
     if (animating == val) return;
     animating = val;

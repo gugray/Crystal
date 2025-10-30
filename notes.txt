@@ -11,7 +11,9 @@ OK shards wireframe
 OK full hedron: solid, WF
 OK live control mechanism
 OK basic context / commands
--- easing control values
+OK progressive parameter updates
+OK progressive changing time-based parameters
+-- ease in-out
 -- regular particles
 
 
