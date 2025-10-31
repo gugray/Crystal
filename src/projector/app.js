@@ -6,7 +6,6 @@ import {LineSegmentsGeometry} from 'three/examples/jsm/lines/LineSegmentsGeometr
 
 import {mulberry32, setRandomGenerator, rand, shuffle} from "./random.js";
 import createVoroPP from "./voropp-module.js";
-import {TK} from "./time.js";
 import Audio from "./audio.js";
 import {Graphics} from "./graphics.js";
 import * as Sharder from "./sharder.js";
@@ -14,28 +13,6 @@ import * as Builder from "./bodyBuilder.js"
 import {elmVideo} from "./bgVideo.js";
 import {initReceiver} from "./receiver.js";
 import {createParam, updateParams} from "./smoothParams.js";
-
-const showEqualizer = false;
-let animating = true;
-let useShadow = true;
-
-const particleGap = 0.2;
-let renderMode = "shards-wf"; // boxes, shards, shards-wf, hedron, hedron-wf
-
-const scaleFactor = createParam(1);
-const yRotSpeed = createParam(0.0003);
-const xRotSpeed = createParam(0);
-const insetHeaveSpeed = 0.0009;
-const insetBy = 0.02; // 0.01
-const displaceHeaveSpeed = 0.0007;
-const displaceBy = 3; // 3
-
-const audioReactive = false;
-const audioBeatThreshold = 20;
-const audioDisplayFactor = 0.15;
-
-let frameIx = 0;
-let lastMsec = 0;
 
 const palette = [
   "hsl(47, 95%, 16%)",
@@ -48,30 +25,76 @@ const palette = [
   "hsl(34, 100%, 49%)",
 ];
 
+const director = {
+
+  // Global options
+  showEqualizer: false,
+  animating: true,
+  useShadow: true,
+  particleGap: 0.2,
+  renderMode: "shards-wf", // boxes, shards, shards-wf, hedron, hedron-wf
+
+  // Audio config
+  audioScale: 0.05,
+  audioBeatThreshold: 20,
+
+  // Control parameters
+  scaleFactor: createParam(1),
+  yRotSpeed: createParam(0.0003),
+  xRotSpeed: createParam(0),
+  insetHeaveSpeed: createParam(0.0009),
+  insetHeaveGain: createParam(0.02), // 0.01
+  displaceHeaveSpeed: createParam(0.0007),
+  displaceHeaveGain: createParam(3), // 3
+  displaceBeatVal: createParam(0),
+
+  // Animation state
+  scale: 0,
+  yRotTime: 0,
+  xRotTime: 0,
+  insetHeaveTime: 0,
+  insetVal: 0.01,
+  displaceHeaveTime: 0,
+  displaceVal: 1,
+};
+
+let updateAnimation = (director, audio, elapsedMsec, particles) => {
+  const d = director;
+  d.scale = d.scaleFactor.get();
+  d.yRotTime += elapsedMsec * d.yRotSpeed.get();
+  d.xRotTime += elapsedMsec * d.xRotSpeed.get();
+  d.insetHeaveTime += elapsedMsec * d.insetHeaveSpeed.get();
+  d.displaceHeaveTime += elapsedMsec * d.displaceHeaveSpeed.get();
+  d.insetVal = d.insetHeaveGain.get() *
+    (0.1 + 0.45 * (Math.sin(d.insetHeaveTime) + 1));
+  d.displaceVal = d.displaceHeaveGain.get() *
+    (0.1 + 0.45 * (Math.sin(d.displaceHeaveTime) + 1));
+  // d.displaceVal += audio.volSmooth * .05;
+  d.displaceVal += d.displaceBeatVal.get();
+  for (const p of particles) {
+    p.animTime += elapsedMsec * p.animSpeed * 0.0001;
+    const animVal = Math.sin((p.animTime + p.animOfs) * 2 * Math.PI);
+    p.pos = p.orig.clone().add(p.axis.clone().multiplyScalar(animVal));
+  }
+}
+
 let seed = Math.round(Math.random() * 65535);
 seed = 0;
 
-/**
- * @type {Graphics}
- */
+const volume = [-1, 1, -1, 1, -1, 1];
+const walls = Sharder.genTetraWalls();
+const particles = [];
+
 let G;
 let voroMod;
 let audio;
 let elmCanvas, w, h;
 let elmEq, elmFrameIx;
 
-const volume = [-1, 1, -1, 1, -1, 1];
-const walls = Sharder.genTetraWalls();
+let frameIx = 0;
+let lastMsec = 0;
 
 setTimeout(init, 50);
-
-const model = {
-  particles: [],
-  yRot: 0,
-  xRot: 0,
-  insetHeave: 1,
-  displaceHeave: 0,
-};
 
 const threeCache = {
   rootGroup: null,
@@ -89,19 +112,19 @@ async function init() {
   voroMod = await createVoroPP();
   initReceiver(runCommand);
 
-  audio = new Audio({ scale: 0.05, volSamples: 5 });
-  audio.beat.threshold = audioBeatThreshold;
+  audio = new Audio({ scale: director.audioScale, volSamples: 5 });
+  audio.beat.threshold = director.audioBeatThreshold;
   setTimeout(() => {
     elmEq.querySelector("#beat .lamp").classList.remove("on");
   }, 1000);
 
   elmEq = document.getElementById("equalizer");
-  if (showEqualizer) elmEq.classList.add("visible");
+  if (director.showEqualizer) elmEq.classList.add("visible");
   elmFrameIx = document.getElementById("lblFrameIx");
 
   elmCanvas = document.getElementById("webgl-canvas");
   resizeCanvas();
-  G = new Graphics(elmCanvas, "blurred-berries", true, false, useShadow);
+  G = new Graphics(elmCanvas, "blurred-berries", true, false, director.useShadow);
   window.addEventListener("resize", () => {
     resizeCanvas();
   });
@@ -110,9 +133,9 @@ async function init() {
     void document.documentElement.requestFullscreen();
   });
 
-  model.particles.push(...Sharder.genRegularParticles(particleGap));
+  particles.push(...Sharder.genRegularParticles(director.particleGap));
   setParticleColors();
-  console.log(`Particle count: ${model.particles.length}`);
+  console.log(`Particle count: ${particles.length}`);
   initScene();
   requestAnimationFrame(frame);
 }
@@ -130,7 +153,7 @@ function initScene() {
   function makeDirLight(x, y, z, intensity) {
     const light = new THREE.DirectionalLight(0xffffff, intensity);
     light.position.set(x, y, z);
-    if (useShadow) {
+    if (director.useShadow) {
       light.shadow.camera.top = shadowCamDim;
       light.shadow.camera.left = -shadowCamDim;
       light.shadow.camera.bottom = -shadowCamDim;
@@ -163,7 +186,7 @@ function clearGeosAndMaterials() {
     if (body.mat) body.mat.dispose();
   });
   threeCache.bodies.length = 0;
-  for (let i = 0; i < model.particles.length; ++i) {
+  for (let i = 0; i < particles.length; ++i) {
     threeCache.bodies.push({
       mat: null,
       geo: null,
@@ -185,47 +208,38 @@ function rebuildBodies() {
   threeCache.rootGroup.clear();
 
   const points = [];
-  model.particles.forEach(p => points.push(p.pos));
-  const voro = Sharder.genVoro(voroMod, volume, walls, points, model.insetHeave * insetBy);
+  particles.forEach(p => points.push(p.pos));
+  const voro = Sharder.genVoro(voroMod, volume, walls, points, director.insetVal);
 
   const shards = [];
   for (const cellData of voro) {
     if (cellData.volume < 5e-6) continue;
-    let displaceVal = model.displaceHeave * displaceBy;
-    if (audioReactive) displaceVal += audioDisplayFactor * audio.volSmooth;
+    let displaceVal = director.displaceVal;
     const shard = new Sharder.Shard(cellData, displaceVal);
     shards.push(shard);
   }
 
-  if (renderMode == "boxes")
-    Builder.rebuildParticleBoxes(G, threeCache, model, shards)
-  else if (renderMode == "shards")
-    Builder.rebuildShardBodies(G, threeCache, model, shards)
-  else if (renderMode == "shards-wf")
-    Builder.rebuildShardWFBodies(G, threeCache, model, shards)
-  else if (renderMode == "hedron")
-    Builder.rebuildHedronSolid(G, threeCache, model);
-  else if (renderMode == "hedron-wf")
-    Builder.rebuildHedronWF(G, threeCache, model);
+  if (director.renderMode == "boxes")
+    Builder.rebuildParticleBoxes(G, threeCache, director, particles, shards)
+  else if (director.renderMode == "shards")
+    Builder.rebuildShardBodies(G, threeCache, director, particles, shards)
+  else if (director.renderMode == "shards-wf")
+    Builder.rebuildShardWFBodies(G, threeCache, director, particles, shards)
+  else if (director.renderMode == "hedron")
+    Builder.rebuildHedronSolid(G, threeCache, director, particles);
+  else if (director.renderMode == "hedron-wf")
+    Builder.rebuildHedronWF(G, threeCache, director, particles);
 }
 
 function setParticleColors() {
 
   // shuffle(palette);
 
-  for (let i = 0; i < model.particles.length; ++i) {
-    const p = model.particles[i];
+  for (let i = 0; i < particles.length; ++i) {
+    const p = particles[i];
     const colorHSLStr = palette[i%palette.length];
     p.color = new THREE.Color(colorHSLStr);
   }
-}
-
-function updateModel(elapsedMsec) {
-  model.yRot += elapsedMsec * yRotSpeed.get();
-  model.xRot += elapsedMsec * xRotSpeed.get();
-  model.insetHeave = 0.1 + 0.45 * (Math.sin(TK.stable * insetHeaveSpeed) + 1);
-  model.displaceHeave = 0.1 + 0.45 * (Math.sin(TK.stable * displaceHeaveSpeed) + 1);
-  for (const p of model.particles) p.update(TK.stable);
 }
 
 function resizeCanvas() {
@@ -241,7 +255,7 @@ function resizeCanvas() {
 }
 
 function updateEqualizer() {
-  if (!showEqualizer) return;
+  if (!director.showEqualizer) return;
   elmEq.querySelector("#vol .val").style.height = `${audio.vol}%`;
   elmEq.querySelector("#vol2 .val").style.height = `${audio.volSmooth}%`;
   elmEq.querySelector("#f0 .val").style.height = `${audio.fft[0]}%`;
@@ -252,29 +266,27 @@ function updateEqualizer() {
   else elmEq.querySelector("#beat .lamp").classList.remove("on");
 }
 
+let onBeat = (director, audio, particles) => {
+  director.displaceBeatVal.set(audio.volSmooth * .05);
+  director.displaceBeatVal.lerpTo(0, 500);
+  // particles.length = 0;
+  // particles.push(...Sharder.genRegularParticles(director.particleGap));
+  // setParticleColors();
+  // clearGeosAndMaterials();
+}
+
 function frame(msec) {
 
   audio.tick();
-  TK.rate1 = 0.5 + audio.vol / 20;
-  TK.rate3 = 0.5 + audio.fft[3] / 20;
-  TK.rate3 = 0.5 + audio.fft[3] / 20;
 
   let delta = msec - lastMsec;
   if (lastMsec != -1) {
-    TK.addMsec(delta);
     updateParams(delta);
-    updateModel(delta);
+    updateAnimation(director, audio, delta, particles);
+    if (audio.isBeat) onBeat(director, audio, particles);
   }
-  if (animating) lastMsec = msec;
+  if (director.animating) lastMsec = msec;
   elmFrameIx.innerText = frameIx.toString();
-
-
-  if (audioReactive && audio.isBeat) {
-    // model.particles.length = 0;
-    // model.particles.push(...Sharder.genRegularParticles(particleGap));
-    // setParticleColors();
-    clearGeosAndMaterials();
-  }
 
   updateEqualizer();
 
@@ -283,30 +295,44 @@ function frame(msec) {
 
   G.render();
 
-  if (animating) requestAnimationFrame(frame);
+  if (director.animating) requestAnimationFrame(frame);
   ++frameIx;
 }
 
 const commandContext = {
-  params: {
-    scaleFactor: scaleFactor,
-    yRotSpeed: yRotSpeed,
-    xRotSpeed: xRotSpeed,
+  director: director,
+  setShowEqualizer: function(val) {
+    if (director.showEqualizer == val) return;
+    director.showEqualizer = val;
+    if (val) elmEq.classList.add("visible");
+    else elmEq.classList.remove("visible");
   },
-  animating: function(val) {
-    if (animating == val) return;
-    animating = val;
-    if (!animating) lastMsec = -1;
-    if (animating) requestAnimationFrame(frame);
+  audioConfig: function(scale, beatThreshold) {
+    director.audioScale = scale;
+    audio.setScale(director.audioScale);
+    audio.beat.threshold = director.audioBeatThreshold = beatThreshold;
+  },
+  setAnimating: function(val) {
+    if (director.animating == val) return;
+    director.animating = val;
+    if (!director.animating) lastMsec = -1;
+    if (director.animating) requestAnimationFrame(frame);
   },
   graphicsConfig: function(background, vignette, dither, useShadow) {
     G.config(background, vignette, dither, useShadow);
+    director.useShadow = useShadow;
   },
-  renderMode: function(mode) {
-    if (renderMode == mode) return;
-    renderMode = mode;
+  setRenderMode: function(mode) {
+    if (director.renderMode == mode) return;
+    director.renderMode = mode;
     clearGeosAndMaterials();
-  }
+  },
+  setUpdateAnimation: function(fun) {
+    updateAnimation = fun;
+  },
+  setOnBeat: function(fun) {
+    onBeat = fun;
+  },
 };
 
 function runCommand(cmd) {

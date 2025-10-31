@@ -18,20 +18,14 @@ export const hedronTips = [
 
 export class Particle {
 
-  constructor(pos, axis, cyclesPerLoop, cycleOfs) {
+  constructor(pos, animSpeed, animOfs) {
     this.orig = pos.clone();
     this.pos = pos.clone();
-    this.axis = axis.clone();
-    this.cyclesPerLoop = cyclesPerLoop;
-    this.cycleOfs = cycleOfs;
+    this.axis = new Vector3(0, 0.1, 0);
 
-    this.update(0);
-  }
-
-  update(msec) {
-    const cycle = this.cycleOfs + this.cyclesPerLoop * msec * 0.0001;
-    const animGain = Math.sin(cycle * 2 * Math.PI);
-    this.pos = this.orig.clone().add(this.axis.clone().multiplyScalar(animGain));
+    this.animSpeed = animSpeed;
+    this.animOfs = animOfs;
+    this.animTime = 0;
   }
 }
 
@@ -43,18 +37,18 @@ export function genRegularParticles(gap) {
     const xzGap = gap * Math.pow(2, q * 2);
     for (let x = 0; x <= 1; x += xzGap) {
       for (let z = 0; z <= 1; z += xzGap) {
-        let animp = makeAnimParams(xzGap);
-        let p = new Particle(new Vector3(x, y, z), ...animp);
+        let [speed, ofs] = makeAnimParams(xzGap);
+        let p = new Particle(new Vector3(x, y, z), speed, ofs);
         res.push(p);
         if (x != 0 && z != 0) {
-          animp = makeAnimParams(xzGap);
-          p = new Particle(new Vector3(-x, y, z), ...animp);
+          [speed, ofs] = makeAnimParams(xzGap);
+          p = new Particle(new Vector3(-x, y, z), speed, ofs);
           res.push(p);
-          animp = makeAnimParams(xzGap);
-          p = new Particle(new Vector3(-x, y, -z), ...animp);
+          [speed, ofs] = makeAnimParams(xzGap);
+          p = new Particle(new Vector3(-x, y, -z), speed, ofs);
           res.push(p);
-          animp = makeAnimParams(xzGap);
-          p = new Particle(new Vector3(x, y, -z), ...animp);
+          [speed, ofs] = makeAnimParams(xzGap);
+          p = new Particle(new Vector3(x, y, -z), speed, ofs);
           res.push(p);
         }
       }
@@ -62,26 +56,11 @@ export function genRegularParticles(gap) {
   }
   return res;
 
-  function makeAnimParams(xzGap) {
-
-    let axis;
-
-    // let tilt = rand_range(20, 70);
-    // tilt = tilt / 180 * Math.PI;
-    // let rot = rand_range(0, 180);
-    // rot = rot / 180 * Math.PI;
-    // let ampl = rand_range(0.05, xzGap * 0.9);
-    // axis = new Vector3(1, 0, 0);
-    // axis.applyAxisAngle(new Vector3(0, 0, 1), tilt);
-    // axis.applyAxisAngle(new Vector3(0, 1, 0), rot);
-    // axis.multiplyScalar(ampl);
-
-    axis = new Vector3(0, 0.1, 0);
-
-    let cyclesPerLoop = 1;
-    if (rand() < 0.5) cyclesPerLoop = 2;
-    let cycleOfs = rand();
-    return [axis, cyclesPerLoop, cycleOfs];
+  function makeAnimParams() {
+    let speed = 1;
+    if (rand() < 0.5) speed = 2;
+    let ofs = rand();
+    return [speed, ofs];
   }
 }
 

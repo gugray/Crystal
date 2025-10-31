@@ -13,15 +13,16 @@ OK live control mechanism
 OK basic context / commands
 OK progressive parameter updates
 OK progressive changing time-based parameters
+OK complete progressive params; refactor animation control and state
+OK displace on peaks, fall back to center (on beat)
+-- hide/show elements (on beat) -> edges, shards
 -- ease in-out
 -- regular particles
 
 
 Reactivity:
--- hide/show elements (on beat) -> edges, shards
 -- cut to objects (eg when showing shards on their own)
 -- separately scale shards (abs level)
--- displace on peaks, fall back to center (on beat)
 -- shake l/r
 -- jump away from screen (when 2 hedrons watching movie)
 -- BG movie intensity / color

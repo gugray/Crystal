@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import {TK} from "./time.js";
 
 export let elmVideo;
 export let videoTexture;
@@ -10,7 +9,7 @@ let videoMaterial, bgScene, bgCamera;
 const videoShader = {
 uniforms: {
   tVideo: {type: "t", value: null},
-  time: {value: 0}
+  // time: {value: 0}
 }, vertexShader: `
 varying vec2 vUv;
 void main() {
@@ -19,7 +18,7 @@ void main() {
 }
 `, fragmentShader: `
 uniform sampler2D tVideo;
-uniform float time;
+// uniform float time;
 varying vec2 vUv;
 
 void main() {
@@ -62,7 +61,6 @@ export function initBgVideo(mainCanvas, videoUrl) {
 }
 
 export function renderVideoToTx(renderer) {
-  videoMaterial.uniforms.time.value = TK.stable;
   videoMaterial.uniforms.tVideo.value = videoTexture;
   const prevRenderTarget = renderer.getRenderTarget();
   renderer.setRenderTarget(renderTarget);

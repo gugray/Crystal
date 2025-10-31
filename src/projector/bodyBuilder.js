@@ -25,7 +25,7 @@ function makeWFMaterial(color) {
     linewidth: wfLineWidth,
   });
 }
-export function rebuildParticleBoxes(G, threeCache, model, shards) {
+export function rebuildParticleBoxes(G, threeCache, director, particles, shards) {
 
   for (let i = 0; i < shards.length; ++i) {
 
@@ -38,16 +38,13 @@ export function rebuildParticleBoxes(G, threeCache, model, shards) {
     }
 
     if (!body.mat || body.mat.type != "MeshLambertMaterial")
-      body.mat = makeSolidMaterial(model.particles[shard.id].color);
+      body.mat = makeSolidMaterial(particles[shard.id].color);
 
     const mesh = new THREE.Mesh(body.geo, body.mat);
     mesh.position.set(shard.offset.x, shard.offset.y, -shard.offset.z);
-    mesh.position.applyAxisAngle(yAxis, model.yRot);
-    mesh.position.applyAxisAngle(xAxis, model.xRot);
-    // TODO: params object
-    // if (useShadow) {
-    //   mesh.castShadow = mesh.receiveShadow = true;
-    // }
+    mesh.position.applyAxisAngle(yAxis, director.yRotTime);
+    mesh.position.applyAxisAngle(xAxis, director.xRotTime);
+    if (director.useShadow) mesh.castShadow = mesh.receiveShadow = true;
     threeCache.rootGroup.add(mesh);
   }
 }
@@ -62,12 +59,12 @@ function offsetShardVertexes(arr, offset, vec) {
   }
 }
 
-function rotateObject(arr, vec, model) {
+function rotateObject(arr, vec, director) {
   for (let i = 0; i < arr.length / 3; ++i) {
     vec.set(arr[3 * i], arr[3 * i + 1], arr[3 * i + 2]);
     vec.z = -vec.z;
-    vec.applyAxisAngle(yAxis, model.yRot);
-    vec.applyAxisAngle(xAxis, model.xRot);
+    vec.applyAxisAngle(yAxis, director.yRotTime);
+    vec.applyAxisAngle(xAxis, director.xRotTime);
     arr[3 * i] = vec.x;
     arr[3 * i + 1] = vec.y;
     arr[3 * i + 2] = vec.z;
@@ -124,7 +121,7 @@ function updateLineSegmentGeo(body, vertexCountChanged) {
   }
 }
 
-export function rebuildShardBodies(G, threeCache, model, shards) {
+export function rebuildShardBodies(G, threeCache, director, particles, shards) {
   const vec = new Vector3();
 
   // Add shards
@@ -142,25 +139,23 @@ export function rebuildShardBodies(G, threeCache, model, shards) {
       body.arr[ix++] = v.x; body.arr[ix++] = v.y; body.arr[ix++] = v.z;
     }
     offsetShardVertexes(body.arr, shard.offset, vec);
-    // TODO: params object
-    // scaleObject(body.arr, vec, scaleFactor.get());
-    rotateObject(body.arr, vec, model);
+    scaleObject(body.arr, vec, director.scale);
+    rotateObject(body.arr, vec, director);
 
     updateBufferGeo(body);
 
     if (!body.mat || body.mat.type != "MeshLambertMaterial") {
       if (body.mat) body.mat.dispose();
-      body.mat = makeSolidMaterial(model.particles[shard.id].color);
+      body.mat = makeSolidMaterial(particles[shard.id].color);
     }
 
     const mesh = new THREE.Mesh(body.geo, body.mat);
-    // TODO: params object
-    // if (useShadow) mesh.castShadow = mesh.receiveShadow = true;
+    if (director.useShadow) mesh.castShadow = mesh.receiveShadow = true;
     threeCache.rootGroup.add(mesh);
   }
 }
 
-export function rebuildShardWFBodies(G, threeCache, model, shards) {
+export function rebuildShardWFBodies(G, threeCache, director, particles, shards) {
   const vec = new Vector3();
   const res = new Vector3();
   G.getResolution(res);
@@ -176,13 +171,14 @@ export function rebuildShardWFBodies(G, threeCache, model, shards) {
 
     // Offset, Z, rotate
     offsetShardVertexes(body.arr, shard.offset, vec);
-    rotateObject(body.arr, vec, model);
+    scaleObject(body.arr, vec, director.scale);
+    rotateObject(body.arr, vec, director);
 
     updateLineSegmentGeo(body, !oldArr || oldArr.length != body.arr.length);
 
     if (!body.mat || body.mat.type != "LineMaterial")
-      body.mat = makeWFMaterial(model.particles[shard.id].color);
-    body.mat.color = model.particles[shard.id].color;
+      body.mat = makeWFMaterial(particles[shard.id].color);
+    body.mat.color = particles[shard.id].color;
     body.mat.res = res;
 
     const mesh = new Line2(body.geo, body.mat);
@@ -191,7 +187,7 @@ export function rebuildShardWFBodies(G, threeCache, model, shards) {
   }
 }
 
-export function rebuildHedronWF(G, threeCache, model) {
+export function rebuildHedronWF(G, threeCache, director, particles) {
   const vec = new Vector3();
   const res = new Vector3();
   G.getResolution(res);
@@ -219,13 +215,14 @@ export function rebuildHedronWF(G, threeCache, model) {
   }
 
   // Rotate, invert z
-  rotateObject(body.arr, vec, model);
+  rotateObject(body.arr, vec, director);
+  scaleObject(body.arr, vec, director.scale);
 
   updateLineSegmentGeo(body, !oldArr || oldArr.length != body.arr.length);
 
   if (!body.mat || body.mat.type != "LineMaterial")
-    body.mat = makeWFMaterial(model.particles[1].color);
-  body.mat.color = model.particles[1].color;
+    body.mat = makeWFMaterial(particles[1].color);
+  body.mat.color = particles[1].color;
   body.mat.res = res;
   // Update color here if u want
 
@@ -233,7 +230,7 @@ export function rebuildHedronWF(G, threeCache, model) {
   threeCache.rootGroup.add(mesh);
 }
 
-export function rebuildHedronSolid(G, threeCache, model) {
+export function rebuildHedronSolid(G, threeCache, director, particles) {
   const vec = new Vector3();
 
   // Only one body
@@ -260,22 +257,22 @@ export function rebuildHedronSolid(G, threeCache, model) {
   for (let i = 0; i < body.arr.length / 3; ++i) {
     vec.set(body.arr[3*i], body.arr[3*i+1], body.arr[3*i+2]);
     vec.z = -vec.z;
-    vec.applyAxisAngle(yAxis, model.yRot);
-    vec.applyAxisAngle(xAxis, model.xRot);
+    vec.applyAxisAngle(yAxis, director.yRotTime);
+    vec.applyAxisAngle(xAxis, director.xRotTime);
     body.arr[3*i] = vec.x;
     body.arr[3*i+1] = vec.y;
     body.arr[3*i+2] = vec.z;
   }
+  scaleObject(body.arr, vec, director.scale);
 
   updateBufferGeo(body);
 
   if (!body.mat || body.mat.type != "MeshLambertMaterial")
-    body.mat = makeSolidMaterial(model.particles[1].color);
-  body.mat.color = model.particles[1].color;
+    body.mat = makeSolidMaterial(particles[1].color);
+  body.mat.color = particles[1].color;
   // Set color if you want
 
   const mesh = new THREE.Mesh(body.geo, body.mat);
-  // TODO: params object
-  // if (useShadow) mesh.castShadow = mesh.receiveShadow = true;
+  if (director.useShadow) mesh.castShadow = mesh.receiveShadow = true;
   threeCache.rootGroup.add(mesh);
 }
