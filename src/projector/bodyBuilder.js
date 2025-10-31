@@ -5,7 +5,6 @@ import {Line2} from "three/addons/lines/Line2.js";
 import {LineMaterial} from "three/addons/lines/LineMaterial.js";
 import * as Sharder from "./sharder.js";
 
-const wfLineWidth = 3;
 const xAxis = new THREE.Vector3(1, 0, 0);
 const yAxis = new THREE.Vector3(0, 1, 0);
 
@@ -19,10 +18,10 @@ function makeSolidMaterial(color) {
   return mat;
 }
 
-function makeWFMaterial(color) {
+function makeWFMaterial(color, lineWidth) {
   return new LineMaterial({
     color: color,
-    linewidth: wfLineWidth,
+    linewidth: lineWidth,
   });
 }
 export function rebuildParticleBoxes(G, threeCache, director, particles, shards) {
@@ -187,7 +186,7 @@ export function rebuildShardWFBodies(G, threeCache, director, particles, shards)
     updateLineSegmentGeo(body, !oldArr || oldArr.length != body.arr.length);
 
     if (!body.mat || body.mat.type != "LineMaterial")
-      body.mat = makeWFMaterial(particles[shard.id].color);
+      body.mat = makeWFMaterial(particles[shard.id].color, director.wfLineWidth);
     body.mat.color = particles[shard.id].color;
     body.mat.res = res;
 
@@ -231,10 +230,9 @@ export function rebuildHedronWF(G, threeCache, director, particles) {
   updateLineSegmentGeo(body, !oldArr || oldArr.length != body.arr.length);
 
   if (!body.mat || body.mat.type != "LineMaterial")
-    body.mat = makeWFMaterial(particles[1].color);
-  body.mat.color = particles[1].color;
+    body.mat = makeWFMaterial(particles[1].color, director.wfLineWidth);
+  body.mat.color = particles[director.hedronColorIx].color;
   body.mat.res = res;
-  // Update color here if u want
 
   const mesh = new Line2(body.geo, body.mat);
   threeCache.rootGroup.add(mesh);
@@ -279,8 +277,7 @@ export function rebuildHedronSolid(G, threeCache, director, particles) {
 
   if (!body.mat || body.mat.type != "MeshLambertMaterial")
     body.mat = makeSolidMaterial(particles[1].color);
-  body.mat.color = particles[1].color;
-  // Set color if you want
+  body.mat.color = particles[director.hedronColorIx].color;
 
   const mesh = new THREE.Mesh(body.geo, body.mat);
   if (director.useShadow) mesh.castShadow = mesh.receiveShadow = true;

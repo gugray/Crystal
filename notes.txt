@@ -17,8 +17,9 @@ OK complete progressive params; refactor animation control and state
 OK displace on peaks, fall back to center (on beat)
 OK hide/show shards (for beat reactivity)
 OK single shard mode
--- dial in dithered movie scene
--- set hedron color
+-- dial in dithered view, incl. movie
+OK set hedron color
+OK mode hedron left
 
 Prepare scenes
 ===================

@@ -33,6 +33,7 @@ const director = {
   useShadow: true,
   particleGap: 0.2,
   renderMode: "shards-wf", // boxes, shards, shards-wf, hedron, hedron-wf
+  wfLineWidth: 5,
 
   // Audio config
   audioScale: 0.05,
@@ -49,6 +50,7 @@ const director = {
   displaceBeatVal: createParam(0),
 
   // Animation state
+  xOfs: 0,
   scale: 0,
   yRotTime: 0,
   xRotTime: 0,
@@ -56,6 +58,7 @@ const director = {
   insetVal: 0.01,
   displaceHeaveTime: 0,
   displaceVal: 1,
+  hedronColorIx: 1,
 };
 
 let updateAnimation = (director, audio, elapsedMsec, particles) => {
@@ -207,6 +210,7 @@ function clearGeosAndMaterials() {
 function rebuildBodies() {
 
   threeCache.rootGroup.clear();
+  threeCache.rootGroup.position.x = director.xOfs;
 
   const points = [];
   particles.forEach(p => points.push(p.pos));
@@ -254,6 +258,12 @@ function randomizeParticleVisibility(nVisible) {
   for (let i = 0; i < ixs.length; ++i) {
     particles[ixs[i]].visible = i < nVisible;
   }
+}
+
+function advanceHedronColorIx() {
+  ++director.hedronColorIx;
+  if (director.hedronColorIx == particles.length)
+    director.hedronColorIx = 0;
 }
 
 function resizeCanvas() {
@@ -313,6 +323,7 @@ const commandContext = {
   rand: rand,
   director: director,
   randomizeParticleVisibility: randomizeParticleVisibility,
+  advanceHedronColorIx: advanceHedronColorIx,
   setShowEqualizer: function(val) {
     if (director.showEqualizer == val) return;
     director.showEqualizer = val;
@@ -337,6 +348,10 @@ const commandContext = {
   setRenderMode: function(mode) {
     if (director.renderMode == mode) return;
     director.renderMode = mode;
+    clearGeosAndMaterials();
+  },
+  setWFLineWidth: function(val) {
+    director.wfLineWidth = val;
     clearGeosAndMaterials();
   },
   setUpdateAnimation: function(fun) {
