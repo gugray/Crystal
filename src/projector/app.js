@@ -13,6 +13,7 @@ import * as Sharder from "./sharder.js";
 import {elmVideo} from "./bgVideo.js";
 import {initReceiver} from "./receiver.js";
 import {createParam, updateParams} from "./smoothParams.js";
+import {sRGBToLinear} from "three/nodes";
 
 const showEqualizer = false;
 let animating = true;
@@ -20,7 +21,7 @@ let useShadow = true;
 
 const particleGap = 0.2;
 const wfLineWidth = 3;
-let renderMode = "shards"; // boxes, shards, shards-wf, hedron, hedron-wf
+let renderMode = "shards-wf"; // boxes, shards, shards-wf, hedron, hedron-wf
 
 const scaleFactor = createParam(1);
 const yRotSpeed = createParam(0.0003);
@@ -199,13 +200,15 @@ function makeWFMaterial(color) {
   });
 }
 
+let voro = null;
+
 function rebuildBodies() {
 
   threeCache.rootGroup.clear();
 
   const points = [];
   model.particles.forEach(p => points.push(p.pos));
-  const voro = Sharder.genVoro(voroMod, volume, walls, points, model.insetHeave * insetBy);
+  voro = Sharder.genVoro(voroMod, volume, walls, points, model.insetHeave * insetBy);
 
   const shards = [];
   for (const cellData of voro) {
@@ -286,6 +289,46 @@ function scaleObject(arr, vec, scale) {
   }
 }
 
+function updateBufferGeo(body) {
+  const recreateGeo = !body.geo || body.geo.type != "BufferGeometry" ||
+    body.geo.getAttribute("position").count != body.arr.length / 3;
+  if (recreateGeo) {
+    if (body.geo) body.geo.dispose();
+    body.geo = new THREE.BufferGeometry();
+  }
+
+  const positionAttr = body.geo.getAttribute("position");
+  if (!positionAttr) body.geo.setAttribute("position", new THREE.BufferAttribute(body.arr, 3));
+  else {
+    positionAttr.array.set(body.arr);
+    positionAttr.needsUpdate = true;
+  }
+  body.geo.computeVertexNormals();
+}
+
+function updateLineSegmentGeo(body, vertexCountChanged) {
+  const recreateGeo = vertexCountChanged || !body.geo || body.geo.type != "LineSegmentsGeometry";
+  if (recreateGeo) {
+    if (body.geo) body.geo.dispose();
+    body.geo = new LineSegmentsGeometry();
+  }
+
+  const startAttr = body.geo.getAttribute('instanceStart');
+  const endAttr = body.geo.getAttribute('instanceEnd');
+
+  if (!startAttr || startAttr.array.length != body.arr.length) {
+    body.geo.setPositions(body.arr);
+  }
+  else {
+    for (let i = 0; i < body.arr.length; ++i) {
+      startAttr.array[i] = body.arr[i];
+      endAttr.array[i] = body.arr[i];
+    }
+    startAttr.needsUpdate = true;
+    endAttr.needsUpdate = true;
+  }
+}
+
 function rebuildShardBodies(group, shards) {
   const vec = new Vector3();
 
@@ -294,13 +337,6 @@ function rebuildShardBodies(group, shards) {
 
     const shard = shards[i];
     const body = threeCache.bodies[shard.id];
-
-    const recreateGeo = !body.geo || body.geo.type != "BufferGeometry" ||
-      body.geo.getAttribute("position").count != shard.triVerts.length;
-    if (recreateGeo) {
-      if (body.geo) body.geo.dispose();
-      body.geo = new THREE.BufferGeometry();
-    }
 
     const arrSz = shard.triVerts.length * 3;
     if (!body.arr || body.arr.length != arrSz)
@@ -314,11 +350,12 @@ function rebuildShardBodies(group, shards) {
     scaleObject(body.arr, vec, scaleFactor.get());
     rotateObject(body.arr, vec);
 
-    body.geo.setAttribute("position", new THREE.BufferAttribute(body.arr, 3));
-    body.geo.computeVertexNormals();
+    updateBufferGeo(body);
 
-    if (!body.mat || body.mat.type != "MeshLambertMaterial")
+    if (!body.mat || body.mat.type != "MeshLambertMaterial") {
+      if (body.mat) body.mat.dispose();
       body.mat = makeSolidMaterial(model.particles[shard.id].color);
+    }
 
     const mesh = new THREE.Mesh(body.geo, body.mat);
     if (useShadow) mesh.castShadow = mesh.receiveShadow = true;
@@ -340,21 +377,13 @@ function rebuildShardWFBodies(group, shards) {
     const oldArr = body.arr;
     body.arr = shard.makeWFLines(body.arr);
 
-    // Offset
+    // Offset, Z, rotate
     offsetShardVertexes(body.arr, shard.offset, vec);
-
-    // Rotate & invert Z
     rotateObject(body.arr, vec);
 
-    let recreateGeo = oldArr == null || oldArr.length != body.arr.length;
-    recreateGeo |= !body.geo || body.geo.type != "LineSegmentsGeometry";
-    if (recreateGeo) {
-      if (body.geo) body.geo.dispose();
-      body.geo = new LineSegmentsGeometry();
-    }
-    body.geo.setPositions(body.arr);
+    updateLineSegmentGeo(body, !oldArr || oldArr.length != body.arr.length);
 
-    if (!body.mat || body.mat.type != "")
+    if (!body.mat || body.mat.type != "LineMaterial")
       body.mat = makeWFMaterial(model.particles[shard.id].color);
     body.mat.color = model.particles[shard.id].color;
     body.mat.res = res;
@@ -395,16 +424,9 @@ function rebuildHedronWF(group) {
   // Rotate, invert z
   rotateObject(body.arr, vec);
 
-  let recreateGeo = oldArr == null || oldArr.length != body.arr.length;
-  recreateGeo |= !body.geo || body.geo.type != "LineSegmentsGeometry";
-  if (recreateGeo) {
-    if (body.geo) body.geo.dispose();
-    body.geo = new LineSegmentsGeometry();
-  }
-  body.geo.setPositions(body.arr);
+  updateLineSegmentGeo(body, !oldArr || oldArr.length != body.arr.length);
 
-
-  if (!body.mat || body.mat.type != "")
+  if (!body.mat || body.mat.type != "LineMaterial")
     body.mat = makeWFMaterial(model.particles[1].color);
   body.mat.color = model.particles[1].color;
   body.mat.res = res;
@@ -448,14 +470,7 @@ function rebuildHedronSolid(group) {
     body.arr[3*i+2] = vec.z;
   }
 
-  const recreateGeo = !body.geo || body.geo.type != "BufferGeometry" ||
-    body.geo.getAttribute("position").count != arrSz / 3;
-  if (recreateGeo) {
-    if (body.geo) body.geo.dispose();
-    body.geo = new THREE.BufferGeometry();
-  }
-  body.geo.setAttribute("position", new THREE.BufferAttribute(body.arr, 3));
-  body.geo.computeVertexNormals();
+  updateBufferGeo(body);
 
   if (!body.mat || body.mat.type != "MeshLambertMaterial")
     body.mat = makeSolidMaterial(model.particles[1].color);

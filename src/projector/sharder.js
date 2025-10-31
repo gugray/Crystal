@@ -113,7 +113,8 @@ export class Shard {
     let nLines = 0;
     for (const fv of this.faceVerts) nLines += fv.length;
     const arrSz = nLines * 2 * 3;
-    if (!arr || arr.length != arrSz) arr = new Float32Array(arrSz);
+    if (!arr || arr.length != arrSz)
+      arr = new Float32Array(arrSz);
     let ix = 0;
     for (const indexes of this.faceVerts) {
       for (let i = 0; i < indexes.length; ++i) {
