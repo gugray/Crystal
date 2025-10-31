@@ -82,7 +82,7 @@ function truncate(str) {
   const newline = str.indexOf('\n');
   const end = newline >= 0 && newline < 32 ? newline : 32;
   let res = str.slice(0, end);
-  if (res.length < str.length) res += "...";
+  if (res.length < str.length) res += " [...]";
   return res;
 }
 
