@@ -10,17 +10,16 @@ import {TK} from "./time.js";
 import Audio from "./audio.js";
 import {Graphics} from "./graphics.js";
 import * as Sharder from "./sharder.js";
+import * as Builder from "./bodyBuilder.js"
 import {elmVideo} from "./bgVideo.js";
 import {initReceiver} from "./receiver.js";
 import {createParam, updateParams} from "./smoothParams.js";
-import {sRGBToLinear} from "three/nodes";
 
 const showEqualizer = false;
 let animating = true;
 let useShadow = true;
 
 const particleGap = 0.2;
-const wfLineWidth = 3;
 let renderMode = "shards-wf"; // boxes, shards, shards-wf, hedron, hedron-wf
 
 const scaleFactor = createParam(1);
@@ -63,8 +62,6 @@ let elmEq, elmFrameIx;
 
 const volume = [-1, 1, -1, 1, -1, 1];
 const walls = Sharder.genTetraWalls();
-const xAxis = new THREE.Vector3(1, 0, 0);
-const yAxis = new THREE.Vector3(0, 1, 0);
 
 setTimeout(init, 50);
 
@@ -183,32 +180,13 @@ function clearGeosAndMaterials() {
   };
 }
 
-function makeSolidMaterial(color) {
-  const mat = new THREE.MeshLambertMaterial({
-    color: color,
-    transparent: false,
-    // opacity: 0.5,
-    // blending: THREE.AdditiveBlending,
-  });
-  return mat;
-}
-
-function makeWFMaterial(color) {
-  return new LineMaterial({
-    color: color,
-    linewidth: wfLineWidth,
-  });
-}
-
-let voro = null;
-
 function rebuildBodies() {
 
   threeCache.rootGroup.clear();
 
   const points = [];
   model.particles.forEach(p => points.push(p.pos));
-  voro = Sharder.genVoro(voroMod, volume, walls, points, model.insetHeave * insetBy);
+  const voro = Sharder.genVoro(voroMod, volume, walls, points, model.insetHeave * insetBy);
 
   const shards = [];
   for (const cellData of voro) {
@@ -220,266 +198,15 @@ function rebuildBodies() {
   }
 
   if (renderMode == "boxes")
-    rebuildParticleBoxes(threeCache.rootGroup, shards)
+    Builder.rebuildParticleBoxes(G, threeCache, model, shards)
   else if (renderMode == "shards")
-    rebuildShardBodies(threeCache.rootGroup, shards)
+    Builder.rebuildShardBodies(G, threeCache, model, shards)
   else if (renderMode == "shards-wf")
-    rebuildShardWFBodies(threeCache.rootGroup, shards)
+    Builder.rebuildShardWFBodies(G, threeCache, model, shards)
   else if (renderMode == "hedron")
-    rebuildHedronSolid(threeCache.rootGroup);
+    Builder.rebuildHedronSolid(G, threeCache, model);
   else if (renderMode == "hedron-wf")
-    rebuildHedronWF(threeCache.rootGroup);
-}
-
-function rebuildParticleBoxes(group, shards) {
-
-  for (let i = 0; i < shards.length; ++i) {
-
-    const shard = shards[i];
-    const body = threeCache.bodies[shard.id];
-
-    const sz = 0.05;
-    if (!body.geo) {
-      body.geo = new THREE.BoxGeometry(sz, sz, sz, 1, 1, 1);
-    }
-
-    if (!body.mat || body.mat.type != "MeshLambertMaterial")
-      body.mat = makeSolidMaterial(model.particles[shard.id].color);
-
-    const mesh = new THREE.Mesh(body.geo, body.mat);
-    mesh.position.set(shard.offset.x, shard.offset.y, -shard.offset.z);
-    mesh.position.applyAxisAngle(yAxis, model.yRot);
-    mesh.position.applyAxisAngle(xAxis, model.xRot);
-    if (useShadow) {
-      mesh.castShadow = mesh.receiveShadow = true;
-    }
-    group.add(mesh);
-  }
-}
-
-function offsetShardVertexes(arr, offset, vec) {
-  for (let i = 0; i < arr.length / 3; ++i) {
-    vec.set(arr[3 * i], arr[3 * i + 1], arr[3 * i + 2]);
-    vec.add(offset);
-    arr[3*i] = vec.x;
-    arr[3*i+1] = vec.y;
-    arr[3*i+2] = vec.z;
-  }
-}
-
-function rotateObject(arr, vec) {
-  for (let i = 0; i < arr.length / 3; ++i) {
-    vec.set(arr[3 * i], arr[3 * i + 1], arr[3 * i + 2]);
-    vec.z = -vec.z;
-    vec.applyAxisAngle(yAxis, model.yRot);
-    vec.applyAxisAngle(xAxis, model.xRot);
-    arr[3 * i] = vec.x;
-    arr[3 * i + 1] = vec.y;
-    arr[3 * i + 2] = vec.z;
-  }
-}
-
-function scaleObject(arr, vec, scale) {
-  for (let i = 0; i < arr.length / 3; ++i) {
-    vec.set(arr[3 * i], arr[3 * i + 1], arr[3 * i + 2]);
-    vec.multiplyScalar(scale);
-    arr[3 * i] = vec.x;
-    arr[3 * i + 1] = vec.y;
-    arr[3 * i + 2] = vec.z;
-  }
-}
-
-function updateBufferGeo(body) {
-  const recreateGeo = !body.geo || body.geo.type != "BufferGeometry" ||
-    body.geo.getAttribute("position").count != body.arr.length / 3;
-  if (recreateGeo) {
-    if (body.geo) body.geo.dispose();
-    body.geo = new THREE.BufferGeometry();
-  }
-
-  const positionAttr = body.geo.getAttribute("position");
-  if (!positionAttr) body.geo.setAttribute("position", new THREE.BufferAttribute(body.arr, 3));
-  else {
-    positionAttr.array.set(body.arr);
-    positionAttr.needsUpdate = true;
-  }
-  body.geo.computeVertexNormals();
-}
-
-function updateLineSegmentGeo(body, vertexCountChanged) {
-  const recreateGeo = vertexCountChanged || !body.geo || body.geo.type != "LineSegmentsGeometry";
-  if (recreateGeo) {
-    if (body.geo) body.geo.dispose();
-    body.geo = new LineSegmentsGeometry();
-  }
-
-  const startAttr = body.geo.getAttribute('instanceStart');
-  const endAttr = body.geo.getAttribute('instanceEnd');
-
-  if (!startAttr || startAttr.array.length != body.arr.length) {
-    body.geo.setPositions(body.arr);
-  }
-  else {
-    for (let i = 0; i < body.arr.length; ++i) {
-      startAttr.array[i] = body.arr[i];
-      endAttr.array[i] = body.arr[i];
-    }
-    startAttr.needsUpdate = true;
-    endAttr.needsUpdate = true;
-  }
-}
-
-function rebuildShardBodies(group, shards) {
-  const vec = new Vector3();
-
-  // Add shards
-  for (let i = 0; i < shards.length; ++i) {
-
-    const shard = shards[i];
-    const body = threeCache.bodies[shard.id];
-
-    const arrSz = shard.triVerts.length * 3;
-    if (!body.arr || body.arr.length != arrSz)
-      body.arr = new Float32Array(arrSz);
-
-    for (let j = 0, ix = 0; j < shard.triVerts.length; ++j) {
-      const v = shard.triVerts[j];
-      body.arr[ix++] = v.x; body.arr[ix++] = v.y; body.arr[ix++] = v.z;
-    }
-    offsetShardVertexes(body.arr, shard.offset, vec);
-    scaleObject(body.arr, vec, scaleFactor.get());
-    rotateObject(body.arr, vec);
-
-    updateBufferGeo(body);
-
-    if (!body.mat || body.mat.type != "MeshLambertMaterial") {
-      if (body.mat) body.mat.dispose();
-      body.mat = makeSolidMaterial(model.particles[shard.id].color);
-    }
-
-    const mesh = new THREE.Mesh(body.geo, body.mat);
-    if (useShadow) mesh.castShadow = mesh.receiveShadow = true;
-    group.add(mesh);
-  }
-}
-
-function rebuildShardWFBodies(group, shards) {
-  const vec = new Vector3();
-  const res = new Vector3();
-  G.getResolution(res);
-
-  // Add shards
-  for (let i = 0; i < shards.length; ++i) {
-
-    const shard = shards[i];
-    const body = threeCache.bodies[shard.id];
-
-    const oldArr = body.arr;
-    body.arr = shard.makeWFLines(body.arr);
-
-    // Offset, Z, rotate
-    offsetShardVertexes(body.arr, shard.offset, vec);
-    rotateObject(body.arr, vec);
-
-    updateLineSegmentGeo(body, !oldArr || oldArr.length != body.arr.length);
-
-    if (!body.mat || body.mat.type != "LineMaterial")
-      body.mat = makeWFMaterial(model.particles[shard.id].color);
-    body.mat.color = model.particles[shard.id].color;
-    body.mat.res = res;
-
-    const mesh = new Line2(body.geo, body.mat);
-
-    group.add(mesh);
-  }
-}
-
-function rebuildHedronWF(group) {
-  const vec = new Vector3();
-  const res = new Vector3();
-  G.getResolution(res);
-
-  // Only one body
-  const body = threeCache.hbody;
-
-  // Add along middle corners
-  const arrSz = 12 * 2 * 3;
-  const oldArr = body.arr;
-  if (!body.arr || body.arr.length != arrSz) body.arr = new Float32Array(arrSz);
-  let ix = 0;
-  for (let i = 0; i < 4; ++i) {
-    const j = (i+1)%4;
-    const v1 = Sharder.hedronCorners[i];
-    const v2 = Sharder.hedronCorners[j];
-    body.arr[ix++] = v1.x; body.arr[ix++] = v1.y; body.arr[ix++] = v1.z;
-    body.arr[ix++] = v2.x; body.arr[ix++] = v2.y; body.arr[ix++] = v2.z;
-    const t1 = Sharder.hedronTips[0];
-    body.arr[ix++] = v1.x; body.arr[ix++] = v1.y; body.arr[ix++] = v1.z;
-    body.arr[ix++] = t1.x; body.arr[ix++] = t1.y; body.arr[ix++] = t1.z;
-    const t2 = Sharder.hedronTips[1];
-    body.arr[ix++] = v1.x; body.arr[ix++] = v1.y; body.arr[ix++] = v1.z;
-    body.arr[ix++] = t2.x; body.arr[ix++] = t2.y; body.arr[ix++] = t2.z;
-  }
-
-  // Rotate, invert z
-  rotateObject(body.arr, vec);
-
-  updateLineSegmentGeo(body, !oldArr || oldArr.length != body.arr.length);
-
-  if (!body.mat || body.mat.type != "LineMaterial")
-    body.mat = makeWFMaterial(model.particles[1].color);
-  body.mat.color = model.particles[1].color;
-  body.mat.res = res;
-  // Update color here if u want
-
-  const mesh = new Line2(body.geo, body.mat);
-  group.add(mesh);
-}
-
-function rebuildHedronSolid(group) {
-  const vec = new Vector3();
-
-  // Only one body
-  const body = threeCache.hbody;
-
-  // Four top and bottom triangles
-  const arrSz = 8 * 3 * 3;
-  if (!body.arr || body.arr.length != arrSz) body.arr = new Float32Array(arrSz);
-  let ix = 0;
-  for (let i = 0; i < 4; ++i) {
-    const j = (i+1)%4;
-    const v1 = Sharder.hedronCorners[i];
-    const v2 = Sharder.hedronCorners[j];
-    const t1 = Sharder.hedronTips[0];
-    const t2 = Sharder.hedronTips[1];
-    body.arr[ix++] = v2.x; body.arr[ix++] = v2.y; body.arr[ix++] = v2.z;
-    body.arr[ix++] = v1.x; body.arr[ix++] = v1.y; body.arr[ix++] = v1.z;
-    body.arr[ix++] = t1.x; body.arr[ix++] = t1.y; body.arr[ix++] = t1.z;
-    body.arr[ix++] = t2.x; body.arr[ix++] = t2.y; body.arr[ix++] = t2.z;
-    body.arr[ix++] = v1.x; body.arr[ix++] = v1.y; body.arr[ix++] = v1.z;
-    body.arr[ix++] = v2.x; body.arr[ix++] = v2.y; body.arr[ix++] = v2.z;
-  }
-  // Rotate, invert z
-  for (let i = 0; i < body.arr.length / 3; ++i) {
-    vec.set(body.arr[3*i], body.arr[3*i+1], body.arr[3*i+2]);
-    vec.z = -vec.z;
-    vec.applyAxisAngle(yAxis, model.yRot);
-    vec.applyAxisAngle(xAxis, model.xRot);
-    body.arr[3*i] = vec.x;
-    body.arr[3*i+1] = vec.y;
-    body.arr[3*i+2] = vec.z;
-  }
-
-  updateBufferGeo(body);
-
-  if (!body.mat || body.mat.type != "MeshLambertMaterial")
-    body.mat = makeSolidMaterial(model.particles[1].color);
-  body.mat.color = model.particles[1].color;
-  // Set color if you want
-
-  const mesh = new THREE.Mesh(body.geo, body.mat);
-  if (useShadow) mesh.castShadow = mesh.receiveShadow = true;
-  group.add(mesh);
+    Builder.rebuildHedronWF(G, threeCache, model);
 }
 
 function setParticleColors() {
