@@ -124,6 +124,9 @@ function updateLineSegmentGeo(body, vertexCountChanged) {
 export function rebuildShardBodies(G, threeCache, director, particles, shards) {
   const vec = new Vector3();
 
+  let nVisibleShards = 0;
+  for (const s of shards) if (particles[s.id].visible) ++nVisibleShards;
+
   // Add shards
   for (let i = 0; i < shards.length; ++i) {
 
@@ -138,7 +141,9 @@ export function rebuildShardBodies(G, threeCache, director, particles, shards) {
       const v = shard.triVerts[j];
       body.arr[ix++] = v.x; body.arr[ix++] = v.y; body.arr[ix++] = v.z;
     }
-    offsetShardVertexes(body.arr, shard.offset, vec);
+
+    if (nVisibleShards > 1) offsetShardVertexes(body.arr, shard.offset, vec);
+    else offsetShardVertexes(body.arr, new Vector3(), vec);
     scaleObject(body.arr, vec, director.scale);
     rotateObject(body.arr, vec, director);
 
@@ -148,6 +153,8 @@ export function rebuildShardBodies(G, threeCache, director, particles, shards) {
       if (body.mat) body.mat.dispose();
       body.mat = makeSolidMaterial(particles[shard.id].color);
     }
+
+    if (!particles[shard.id].visible) continue;
 
     const mesh = new THREE.Mesh(body.geo, body.mat);
     if (director.useShadow) mesh.castShadow = mesh.receiveShadow = true;
@@ -160,6 +167,9 @@ export function rebuildShardWFBodies(G, threeCache, director, particles, shards)
   const res = new Vector3();
   G.getResolution(res);
 
+  let nVisibleShards = 0;
+  for (const s of shards) if (particles[s.id].visible) ++nVisibleShards;
+
   // Add shards
   for (let i = 0; i < shards.length; ++i) {
 
@@ -169,8 +179,8 @@ export function rebuildShardWFBodies(G, threeCache, director, particles, shards)
     const oldArr = body.arr;
     body.arr = shard.makeWFLines(body.arr);
 
-    // Offset, Z, rotate
-    offsetShardVertexes(body.arr, shard.offset, vec);
+    if (nVisibleShards > 1) offsetShardVertexes(body.arr, shard.offset, vec);
+    else offsetShardVertexes(body.arr, new Vector3(), vec);
     scaleObject(body.arr, vec, director.scale);
     rotateObject(body.arr, vec, director);
 
@@ -181,8 +191,8 @@ export function rebuildShardWFBodies(G, threeCache, director, particles, shards)
     body.mat.color = particles[shard.id].color;
     body.mat.res = res;
 
+    if (!particles[shard.id].visible) continue;
     const mesh = new Line2(body.geo, body.mat);
-
     threeCache.rootGroup.add(mesh);
   }
 }

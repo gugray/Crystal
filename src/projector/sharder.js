@@ -26,6 +26,8 @@ export class Particle {
     this.animSpeed = animSpeed;
     this.animOfs = animOfs;
     this.animTime = 0;
+
+    this.visible = true;
   }
 }
 

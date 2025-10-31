@@ -136,6 +136,7 @@ async function init() {
   particles.push(...Sharder.genRegularParticles(director.particleGap));
   setParticleColors();
   console.log(`Particle count: ${particles.length}`);
+
   initScene();
   requestAnimationFrame(frame);
 }
@@ -232,9 +233,6 @@ function rebuildBodies() {
 }
 
 function setParticleColors() {
-
-  // shuffle(palette);
-
   for (let i = 0; i < particles.length; ++i) {
     const p = particles[i];
     const colorHSLStr = palette[i%palette.length];
@@ -242,8 +240,23 @@ function setParticleColors() {
   }
 }
 
-function resizeCanvas() {
+function randomizeParticleVisibility(nVisible) {
+  // Indexes of visible particles (got object cached in threeCache.bodies)
+  const ixs = [];
+  for (let i = 0; i < particles.length; ++i) {
+    const body = threeCache.bodies[i];
+    if (!body || !body.geo) continue;
+    ixs.push(i);
+  }
+  shuffle(ixs);
+  if (nVisible == -1) nVisible = ixs.length;
+  else if (nVisible < 1) nVisible = Math.floor(ixs.length * nVisible);
+  for (let i = 0; i < ixs.length; ++i) {
+    particles[ixs[i]].visible = i < nVisible;
+  }
+}
 
+function resizeCanvas() {
   // Resize WebGL canvas
   let elmWidth = window.innerWidth;
   let elmHeight = window.innerHeight;
@@ -267,12 +280,9 @@ function updateEqualizer() {
 }
 
 let onBeat = (director, audio, particles) => {
-  director.displaceBeatVal.set(audio.volSmooth * .05);
-  director.displaceBeatVal.lerpTo(0, 500);
-  // particles.length = 0;
-  // particles.push(...Sharder.genRegularParticles(director.particleGap));
-  // setParticleColors();
-  // clearGeosAndMaterials();
+  // director.displaceBeatVal.set(audio.volSmooth * .01);
+  // director.displaceBeatVal.lerpTo(0, 500);
+  // if (rand() < 0.3) randomizeParticleVisibility(0.5);
 }
 
 function frame(msec) {
@@ -300,7 +310,9 @@ function frame(msec) {
 }
 
 const commandContext = {
+  rand: rand,
   director: director,
+  randomizeParticleVisibility: randomizeParticleVisibility,
   setShowEqualizer: function(val) {
     if (director.showEqualizer == val) return;
     director.showEqualizer = val;
@@ -312,15 +324,15 @@ const commandContext = {
     audio.setScale(director.audioScale);
     audio.beat.threshold = director.audioBeatThreshold = beatThreshold;
   },
+  graphicsConfig: function(background, vignette, dither, useShadow) {
+    G.config(background, vignette, dither, useShadow);
+    director.useShadow = useShadow;
+  },
   setAnimating: function(val) {
     if (director.animating == val) return;
     director.animating = val;
     if (!director.animating) lastMsec = -1;
     if (director.animating) requestAnimationFrame(frame);
-  },
-  graphicsConfig: function(background, vignette, dither, useShadow) {
-    G.config(background, vignette, dither, useShadow);
-    director.useShadow = useShadow;
   },
   setRenderMode: function(mode) {
     if (director.renderMode == mode) return;

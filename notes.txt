@@ -15,12 +15,26 @@ OK progressive parameter updates
 OK progressive changing time-based parameters
 OK complete progressive params; refactor animation control and state
 OK displace on peaks, fall back to center (on beat)
--- hide/show elements (on beat) -> edges, shards
+OK hide/show shards (for beat reactivity)
+OK single shard mode
+-- dial in dithered movie scene
+-- set hedron color
+
+Prepare scenes
+===================
+
+-- Single hedron
+
+-- Single hedron regular fractured
+
+-- Single hedron flowing voro
+
+
+
+Reactivity ideas
+===================
 -- ease in-out
 -- regular particles
-
-
-Reactivity:
 -- cut to objects (eg when showing shards on their own)
 -- separately scale shards (abs level)
 -- shake l/r
