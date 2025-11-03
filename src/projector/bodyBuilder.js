@@ -40,9 +40,10 @@ export function rebuildParticleBoxes(G, threeCache, director, particles, shards)
       body.mat = makeSolidMaterial(particles[shard.id].color);
 
     const mesh = new THREE.Mesh(body.geo, body.mat);
-    mesh.position.set(shard.offset.x, shard.offset.y, -shard.offset.z);
+    mesh.position.set(shard.offset.x * director.scale, shard.offset.y * director.scale, -shard.offset.z * director.scale);
     mesh.position.applyAxisAngle(yAxis, director.yRotTime);
     mesh.position.applyAxisAngle(xAxis, director.xRotTime);
+    mesh.scale.set(director.scale, director.scale, director.scale);
     if (director.useShadow) mesh.castShadow = mesh.receiveShadow = true;
     threeCache.rootGroup.add(mesh);
   }
@@ -187,7 +188,8 @@ export function rebuildShardWFBodies(G, threeCache, director, particles, shards)
 
     if (!body.mat || body.mat.type != "LineMaterial")
       body.mat = makeWFMaterial(particles[shard.id].color, director.wfLineWidth);
-    body.mat.color = particles[shard.id].color;
+    if (director.uniformColorIx == -1) body.mat.color = particles[shard.id].color;
+    else body.mat.color = particles[director.uniformColorIx].color;
     body.mat.res = res;
 
     if (!particles[shard.id].visible) continue;

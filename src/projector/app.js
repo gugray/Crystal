@@ -32,15 +32,15 @@ const director = {
   animating: true,
   useShadow: true,
   particleGap: 0.2,
-  renderMode: "shards-wf", // boxes, shards, shards-wf, hedron, hedron-wf
-  wfLineWidth: 5,
+  renderMode: "hedron-wf", // boxes, shards, shards-wf, hedron, hedron-wf
+  wfLineWidth: 3,
 
   // Audio config
   audioScale: 0.05,
   audioBeatThreshold: 20,
 
   // Control parameters
-  scaleFactor: createParam(1),
+  scaleFactor: createParam(0),
   yRotSpeed: createParam(0.0003),
   xRotSpeed: createParam(0),
   insetHeaveSpeed: createParam(0.0009),
@@ -51,7 +51,7 @@ const director = {
 
   // Animation state
   xOfs: 0,
-  scale: 0,
+  scale: 1,
   yRotTime: 0,
   xRotTime: 0,
   insetHeaveTime: 0,
@@ -59,6 +59,7 @@ const director = {
   displaceHeaveTime: 0,
   displaceVal: 1,
   hedronColorIx: 1,
+  uniformColorIx: -1,
 };
 
 let updateAnimation = (director, audio, elapsedMsec, particles) => {
